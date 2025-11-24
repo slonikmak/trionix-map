@@ -1,6 +1,6 @@
 # Capability: Map Layer Guidelines
 
-## Overview
+## Purpose
 
 This capability defines guidelines and constraints for implementing `MapLayer` overlays on top of `MapView`. It focuses on code structure, JavaFX threading rules, and performance best practices so that new layers behave consistently and do not degrade map interaction.
 
