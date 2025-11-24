@@ -24,16 +24,23 @@ Lightweight JavaFX control for rendering OpenStreetMap raster tiles with smooth 
 └─────────────────────────────────────────────┘
 ```
 
+## Project Structure
+
+This is a multi-module Maven project:
+
+- **trionix-map-core** – Core library with `MapView`, layers, tile management, and caching. JavaFX is a `provided` dependency, so consumers can use their own JavaFX version.
+- **trionix-map-demo** – Example applications demonstrating the library (simple, basic, and advanced examples).
+
 ## Quick Start
 
 1. **Requirements** – Java 21+, Maven 3.9+, and an internet connection for live OSM tiles.
-2. **Build and test** – `mvn clean verify` compiles the library and runs the full unit/integration suite.
+2. **Build and test** – `mvn clean verify` compiles all modules and runs the full unit/integration suite.
 3. **Run the samples** – Choose one of the following:
-   - **Simple example:** `mvn compile exec:java -Dexec.mainClass=com.trionix.maps.samples.SimpleMapExample`
+   - **Simple example:** `mvn -pl trionix-map-demo compile exec:java -Dexec.mainClass=com.trionix.maps.samples.SimpleMapExample`
      - Minimal 20-line code example showing basic map display
-   - **Basic example:** `mvn compile exec:java -Dexec.mainClass=com.trionix.maps.samples.MapViewSampleApp`
+   - **Basic example:** `mvn -pl trionix-map-demo compile exec:java -Dexec.mainClass=com.trionix.maps.samples.MapViewSampleApp`
      - Simple map centered on San Francisco with labeled markers
-   - **Advanced example:** `mvn compile exec:java -Dexec.mainClass=com.trionix.maps.samples.AdvancedMapExample`
+   - **Advanced example:** `mvn -pl trionix-map-demo compile exec:java -Dexec.mainClass=com.trionix.maps.samples.AdvancedMapExample`
      - Interactive map with control panel, multiple layers, and route drawing
    - **Quick launcher:** Run `.\run-examples.ps1` (Windows) or `./run-examples.sh` (Linux/Mac) for an interactive menu
 
@@ -42,7 +49,7 @@ Use the mouse to drag (pan) and scroll (zoom) the map.
 📚 **New to the library?** Check out:
 - [QUICKSTART.md](QUICKSTART.md) - Fast introduction with minimal examples
 - [CODE_EXAMPLES.md](CODE_EXAMPLES.md) - Ready-to-copy code snippets
-- [src/main/java/com/trionix/maps/samples/README.md](src/main/java/com/trionix/maps/samples/README.md) - Detailed examples documentation
+- [trionix-map-demo/src/main/java/com/trionix/maps/samples/README.md](trionix-map-demo/src/main/java/com/trionix/maps/samples/README.md) - Detailed examples documentation
 
 ## Public API Overview
 
@@ -52,6 +59,25 @@ Use the mouse to drag (pan) and scroll (zoom) the map.
 - `TileCache` – Interface for thread-safe tile caches. `InMemoryTileCache` ships with an LRU implementation sized for a configurable number of tiles.
 
 ## Using `MapView`
+
+Add `trionix-map-core` as a dependency. You must provide JavaFX at runtime:
+
+```xml
+<dependency>
+    <groupId>com.trionix</groupId>
+    <artifactId>trionix-map-core</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+</dependency>
+<!-- Provide JavaFX with your chosen version and platform -->
+<dependency>
+    <groupId>org.openjfx</groupId>
+    <artifactId>javafx-controls</artifactId>
+    <version>21.0.2</version>
+    <classifier>win</classifier>  <!-- or mac, mac-aarch64, linux -->
+</dependency>
+```
+
+Then create a `MapView`:
 
 ```java
 MapView mapView = new MapView();
@@ -80,17 +106,18 @@ Run `mvn clean verify` to execute unit tests, integration tests, and JavaFX head
 
 ## Examples
 
-The project includes two example applications in `src/main/java/com/trionix/maps/samples/`:
+The `trionix-map-demo` module includes example applications in `src/main/java/com/trionix/maps/samples/`:
 
-1. **MapViewSampleApp** – Basic example demonstrating simple marker placement
-2. **AdvancedMapExample** – Comprehensive example with:
+1. **SimpleMapExample** – Minimal 20-line example
+2. **MapViewSampleApp** – Basic example demonstrating simple marker placement
+3. **AdvancedMapExample** – Comprehensive example with:
    - Multiple layers (markers and routes)
    - Animated navigation with `flyTo()`
    - Interactive control panel
    - Real-time coordinate display
    - Custom styled markers and route lines
 
-See `src/main/java/com/trionix/maps/samples/README.md` for detailed documentation and code snippets.
+See `trionix-map-demo/src/main/java/com/trionix/maps/samples/README.md` for detailed documentation and code snippets.
 
 ## License
 

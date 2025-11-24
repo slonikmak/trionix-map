@@ -14,15 +14,15 @@ $choice = Read-Host "Введите номер (1, 2 или 3)"
 switch ($choice) {
     "1" {
         Write-Host "Запуск простейшего примера..." -ForegroundColor Green
-        mvn compile exec:java "-Dexec.mainClass=com.trionix.maps.samples.SimpleMapExample"
+        mvn -pl trionix-map-demo compile exec:java "-Dexec.mainClass=com.trionix.maps.samples.SimpleMapExample"
     }
     "2" {
         Write-Host "Запуск базового примера..." -ForegroundColor Green
-        mvn compile exec:java "-Dexec.mainClass=com.trionix.maps.samples.MapViewSampleApp"
+        mvn -pl trionix-map-demo compile exec:java "-Dexec.mainClass=com.trionix.maps.samples.MapViewSampleApp"
     }
     "3" {
         Write-Host "Запуск продвинутого примера..." -ForegroundColor Green
-        mvn compile exec:java "-Dexec.mainClass=com.trionix.maps.samples.AdvancedMapExample"
+        mvn -pl trionix-map-demo compile exec:java "-Dexec.mainClass=com.trionix.maps.samples.AdvancedMapExample"
     }
     default {
         Write-Host "Неверный выбор. Пожалуйста, введите 1, 2 или 3." -ForegroundColor Red
