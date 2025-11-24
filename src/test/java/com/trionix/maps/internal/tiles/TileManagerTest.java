@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
@@ -110,6 +111,23 @@ class TileManagerTest {
         assertThat(cache.get(3, 4, 5)).isSameAs(freshImage);
     }
 
+    @Test
+    void invokesTileRetrieverOnVirtualThread() throws Exception {
+        InMemoryTileCache cache = new InMemoryTileCache(10);
+        ThreadCapturingRetriever retriever = new ThreadCapturingRetriever();
+        TileManager manager = new TileManager(cache, retriever);
+        TileCoordinate coordinate = new TileCoordinate(4, 2, 1);
+
+        FxTestHarness.runOnFxThread(() ->
+                manager.refreshTiles(List.of(coordinate), (tile, image) -> {
+                }));
+
+        ThreadCall call = retriever.takeCall(Duration.ofSeconds(1));
+        assertThat(call.thread().isVirtual()).isTrue();
+        assertThat(call.thread().getName()).startsWith("tile-worker-");
+        call.future().complete(sampleImage);
+    }
+
     private static final class RecordingRetriever implements TileRetriever {
         private final BlockingQueue<LoadRequest> requests = new LinkedBlockingDeque<>();
 
@@ -132,5 +150,25 @@ class TileManagerTest {
 
     private record LoadRequest(TileCoordinate coordinate,
                                java.util.concurrent.CompletableFuture<Image> future) {
+    }
+
+    private static final class ThreadCapturingRetriever implements TileRetriever {
+        private final BlockingQueue<ThreadCall> calls = new LinkedBlockingDeque<>();
+
+        @Override
+        public CompletableFuture<Image> loadTile(int zoom, long x, long y) {
+            CompletableFuture<Image> future = new CompletableFuture<>();
+            calls.add(new ThreadCall(Thread.currentThread(), new TileCoordinate(zoom, x, y), future));
+            return future;
+        }
+
+        ThreadCall takeCall(Duration timeout) throws InterruptedException {
+            ThreadCall call = calls.poll(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            return Objects.requireNonNull(call, "Timed out waiting for retriever invocation");
+        }
+    }
+
+    private record ThreadCall(Thread thread, TileCoordinate coordinate,
+                              CompletableFuture<Image> future) {
     }
 }

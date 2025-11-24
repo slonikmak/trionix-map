@@ -51,8 +51,10 @@ class MapViewIntegrationTest {
             expectedState.setViewportSize(512.0, 512.0);
             List<TileCoordinate> expectedTiles = expectedState.visibleTiles();
 
-            List<LoadRequest> requests = retriever.awaitRequests(expectedTiles.size(), Duration.ofSeconds(1));
-            assertThat(requests).extracting(LoadRequest::coordinate).containsExactlyElementsOf(expectedTiles);
+                List<LoadRequest> requests = retriever.awaitRequests(expectedTiles.size(), Duration.ofSeconds(1));
+                assertThat(requests)
+                    .extracting(LoadRequest::coordinate)
+                    .containsExactlyInAnyOrderElementsOf(expectedTiles);
 
             WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
             requests.forEach(request -> request.future().complete(tileImage));
@@ -224,10 +226,10 @@ class MapViewIntegrationTest {
             List<TileCoordinate> zoomTiles = zoomState.visibleTiles();
                 assertThat(zoomState.discreteZoomLevel()).isGreaterThan(baseState.discreteZoomLevel());
 
-            List<LoadRequest> zoomRequests = retriever.awaitRequests(zoomTiles.size(), Duration.ofSeconds(1));
-            assertThat(zoomRequests)
+                List<LoadRequest> zoomRequests = retriever.awaitRequests(zoomTiles.size(), Duration.ofSeconds(1));
+                assertThat(zoomRequests)
                     .extracting(LoadRequest::coordinate)
-                    .containsExactlyElementsOf(zoomTiles);
+                    .containsExactlyInAnyOrderElementsOf(zoomTiles);
             zoomRequests.forEach(request -> request.future().complete(tileImage));
             mounted.flushFx();
         }

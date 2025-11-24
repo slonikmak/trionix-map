@@ -70,8 +70,9 @@ Subclass `MapLayer` and override `layoutLayer(MapView mapView)` to position chil
 ## Threading Notes
 
 - Modify `MapView` properties and its layer list on the JavaFX Application Thread.
-- `TileRetriever` and `TileCache` implementations must be thread-safe; they are invoked from background tile-loading threads.
+- `TileRetriever` and `TileCache` implementations must be thread-safe; they are invoked from background tasks running on virtual threads.
 - `MapLayer#layoutLayer` is always called on the JavaFX Application Thread, so long-running computations should be moved off-thread.
+- `TileExecutors` uses a shared virtual-thread-per-task executor by default, so blocking HTTP or decoding inside a retriever is acceptable as long as it never touches JavaFX scene graph APIs.
 
 ## Testing
 

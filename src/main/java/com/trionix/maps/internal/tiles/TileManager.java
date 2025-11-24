@@ -2,6 +2,7 @@ package com.trionix.maps.internal.tiles;
 
 import com.trionix.maps.TileCache;
 import com.trionix.maps.TileRetriever;
+import com.trionix.maps.internal.concurrent.TileExecutors;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -77,8 +78,11 @@ public final class TileManager {
             if (existing != null && existing.generation == generation) {
                 return existing;
             }
-            CompletableFuture<Image> future = retriever
-                    .loadTile(coordinate.zoom(), coordinate.x(), coordinate.y());
+                    CompletableFuture<Image> future = CompletableFuture
+                        .supplyAsync(() -> retriever.loadTile(coordinate.zoom(), coordinate.x(), coordinate.y()),
+                            TileExecutors.tileExecutor())
+                        .thenCompose(tileFuture -> Objects.requireNonNull(tileFuture,
+                            "TileRetriever returned null future"));
             future.whenComplete((image, error) ->
                     handleCompletion(coordinate, generation, image, error, consumer));
             return new LoadHandle(generation, future);
