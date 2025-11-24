@@ -137,3 +137,14 @@ The system SHALL provide an observable list of `MapLayer` instances for managing
 - **WHEN** `MapView` schedules tile refreshes, placeholder painting, or cache pruning that involve I/O or CPU-heavy work
 - **THEN** these tasks SHALL execute on background threads (such as the virtual-thread executor) and only marshal minimal state changes back to the FX thread
 
+### Requirement: Library Distribution Model
+The `trionix-map-core` library artifact SHALL NOT include JavaFX dependencies transitively, allowing consumers to provide their own JavaFX version and platform classifier.
+
+#### Scenario: Library artifact excludes JavaFX
+- **WHEN** a consumer adds `trionix-map-core` as a Maven dependency
+- **THEN** JavaFX artifacts are NOT pulled transitively and the consumer must declare their own JavaFX dependencies
+
+#### Scenario: Library compiles with provided JavaFX
+- **WHEN** the library module is built
+- **THEN** JavaFX classes are available at compile time (via `provided` scope) but are not bundled in the resulting artifact
+
