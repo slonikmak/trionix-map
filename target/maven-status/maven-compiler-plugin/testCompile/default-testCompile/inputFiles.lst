@@ -1,0 +1,13 @@
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\test\java\com\trionix\maps\InMemoryTileCacheTest.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\test\java\com\trionix\maps\internal\MapStateTest.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\test\java\com\trionix\maps\internal\projection\WebMercatorProjectionTest.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\test\java\com\trionix\maps\internal\tiles\TileManagerTest.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\test\java\com\trionix\maps\internal\util\CoordinateNormalizerTest.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\test\java\com\trionix\maps\layer\LayerSystemTest.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\test\java\com\trionix\maps\MapViewAnimationTest.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\test\java\com\trionix\maps\MapViewIntegrationTest.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\test\java\com\trionix\maps\MapViewTest.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\test\java\com\trionix\maps\SimpleOsmTileRetrieverTest.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\test\java\com\trionix\maps\testing\FxTestHarness.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\test\java\com\trionix\maps\testing\MapViewTestHarness.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\test\java\com\trionix\maps\testing\RecordingTileRetriever.java

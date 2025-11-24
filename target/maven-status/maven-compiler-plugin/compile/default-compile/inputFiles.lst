@@ -1,0 +1,17 @@
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\InMemoryTileCache.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\internal\concurrent\TileExecutors.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\internal\MapState.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\internal\projection\Projection.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\internal\projection\WebMercatorProjection.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\internal\tiles\PlaceholderTileFactory.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\internal\tiles\TileCoordinate.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\internal\tiles\TileManager.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\internal\util\CoordinateNormalizer.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\layer\MapLayer.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\MapView.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\samples\AdvancedMapExample.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\samples\MapViewSampleApp.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\samples\SimpleMapExample.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\SimpleOsmTileRetriever.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\TileCache.java
+C:\Users\kp\IdeaProjects\trionix-map-openspec\src\main\java\com\trionix\maps\TileRetriever.java
