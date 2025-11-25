@@ -30,6 +30,14 @@ public final class MapState {
     private double viewportWidth;
     private double viewportHeight;
 
+    // Cached visible tiles to avoid recalculating every frame
+    private List<TileCoordinate> cachedVisibleTiles;
+    private double cachedCenterLat;
+    private double cachedCenterLon;
+    private double cachedZoom;
+    private double cachedViewportWidth;
+    private double cachedViewportHeight;
+
     public MapState() {
         this(new WebMercatorProjection(), DEFAULT_MIN_ZOOM, DEFAULT_MAX_ZOOM);
     }
@@ -87,12 +95,24 @@ public final class MapState {
 
     /**
      * Calculates a list of visible tile coordinates (row-major order) for the
-     * current state. Longitude wrapping is handled automatically.
+     * current state. Longitude wrapping is handled automatically. Results are
+     * cached and only recalculated when viewport parameters change.
      */
     public List<TileCoordinate> visibleTiles() {
         if (viewportWidth <= 0.0 || viewportHeight <= 0.0) {
             return List.of();
         }
+
+        // Return cached result if viewport hasn't changed
+        if (cachedVisibleTiles != null
+                && Double.compare(centerLat, cachedCenterLat) == 0
+                && Double.compare(centerLon, cachedCenterLon) == 0
+                && Double.compare(zoom, cachedZoom) == 0
+                && Double.compare(viewportWidth, cachedViewportWidth) == 0
+                && Double.compare(viewportHeight, cachedViewportHeight) == 0) {
+            return cachedVisibleTiles;
+        }
+
         int zoomLevel = discreteZoomLevel();
         double tileSize = Projection.TILE_SIZE;
         var centerPixels = projection.latLonToPixel(centerLat, centerLon, zoomLevel);
@@ -111,19 +131,28 @@ public final class MapState {
         long endY = Math.min(tileCount - 1, (long) Math.ceil(maxPixelYExclusive / tileSize) - 1);
 
         if (endX < startX || endY < startY) {
-            return List.of();
+            cachedVisibleTiles = List.of();
+        } else {
+            int columns = (int) (endX - startX + 1);
+            int rows = (int) (endY - startY + 1);
+            List<TileCoordinate> tiles = new ArrayList<>(columns * rows);
+            for (long tileY = startY; tileY <= endY; tileY++) {
+                for (long tileX = startX; tileX <= endX; tileX++) {
+                    long wrappedX = wrapTileX(tileX, tileCount);
+                    tiles.add(new TileCoordinate(zoomLevel, wrappedX, tileY));
+                }
+            }
+            cachedVisibleTiles = List.copyOf(tiles);
         }
 
-        int columns = (int) (endX - startX + 1);
-        int rows = (int) (endY - startY + 1);
-        List<TileCoordinate> tiles = new ArrayList<>(columns * rows);
-        for (long tileY = startY; tileY <= endY; tileY++) {
-            for (long tileX = startX; tileX <= endX; tileX++) {
-                long wrappedX = wrapTileX(tileX, tileCount);
-                tiles.add(new TileCoordinate(zoomLevel, wrappedX, tileY));
-            }
-        }
-        return List.copyOf(tiles);
+        // Update cached parameters
+        cachedCenterLat = centerLat;
+        cachedCenterLon = centerLon;
+        cachedZoom = zoom;
+        cachedViewportWidth = viewportWidth;
+        cachedViewportHeight = viewportHeight;
+
+        return cachedVisibleTiles;
     }
 
     private static long wrapTileX(long tileX, long tileCount) {

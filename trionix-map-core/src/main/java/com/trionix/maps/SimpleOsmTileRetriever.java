@@ -1,5 +1,6 @@
 package com.trionix.maps;
 
+import com.trionix.maps.internal.concurrent.TileExecutors;
 import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -8,12 +9,15 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
 import javafx.scene.image.Image;
 
 /**
  * Default {@link TileRetriever} that pulls PNG tiles from tile.openstreetmap.org.
  * <p>
  * Uses asynchronous HTTP calls with direct JavaFX Image decoding for optimal performance.
+ * Concurrent requests are limited via {@link TileExecutors#concurrencyLimiter()} to avoid
+ * overwhelming the tile server.
  */
 public final class SimpleOsmTileRetriever implements TileRetriever {
 
@@ -26,6 +30,7 @@ public final class SimpleOsmTileRetriever implements TileRetriever {
     private final String userAgent;
     private final Duration readTimeout;
     private final HttpClient httpClient;
+    private final Semaphore concurrencyLimiter;
 
     public SimpleOsmTileRetriever() {
         this(DEFAULT_BASE_URL, DEFAULT_USER_AGENT, DEFAULT_CONNECT_TIMEOUT, DEFAULT_READ_TIMEOUT);
@@ -35,6 +40,7 @@ public final class SimpleOsmTileRetriever implements TileRetriever {
         this.baseUri = sanitizeBaseUrl(baseUrl);
         this.userAgent = Objects.requireNonNull(userAgent, "userAgent");
         this.readTimeout = Objects.requireNonNull(readTimeout, "readTimeout");
+        this.concurrencyLimiter = TileExecutors.concurrencyLimiter();
         Duration connect = Objects.requireNonNull(connectTimeout, "connectTimeout");
         this.httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
@@ -52,14 +58,23 @@ public final class SimpleOsmTileRetriever implements TileRetriever {
                 .header("User-Agent", userAgent)
                 .build();
 
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray())
-                .thenApply(response -> {
-                    if (response.statusCode() != 200) {
-                        throw new TileRetrievalException(
-                                "Unexpected HTTP status " + response.statusCode() + " for tile " + tileUri);
-                    }
-                    return new Image(new ByteArrayInputStream(response.body()));
-                });
+        return CompletableFuture.runAsync(() -> {
+            try {
+                concurrencyLimiter.acquire();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new TileRetrievalException("Interrupted while waiting for permit", e);
+            }
+        }, TileExecutors.tileExecutor())
+        .thenCompose(ignored -> httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray()))
+        .thenApply(response -> {
+            if (response.statusCode() != 200) {
+                throw new TileRetrievalException(
+                        "Unexpected HTTP status " + response.statusCode() + " for tile " + tileUri);
+            }
+            return new Image(new ByteArrayInputStream(response.body()));
+        })
+        .whenComplete((result, error) -> concurrencyLimiter.release());
     }
 
     private static URI sanitizeBaseUrl(String baseUrl) {

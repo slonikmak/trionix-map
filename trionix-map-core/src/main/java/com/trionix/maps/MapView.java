@@ -15,13 +15,10 @@ import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
 import javafx.animation.Timeline;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.DoubleUnaryOperator;
 import javafx.application.Platform;
 import javafx.beans.property.DoubleProperty;
@@ -66,11 +63,11 @@ public final class MapView extends Region {
     private final Canvas tileCanvas = new Canvas();
     private final Pane layerPane = new Pane();
     private final GraphicsContext graphics = tileCanvas.getGraphicsContext2D();
-    private final Map<TileCoordinate, Image> tileImages = new HashMap<>();
     private final ObservableList<MapLayer> layers = FXCollections.observableArrayList();
     private Timeline flyToTimeline;
 
     private List<TileCoordinate> currentVisibleTiles = List.of();
+    private boolean refreshPending;
     private boolean dragging;
     private double lastDragX;
     private double lastDragY;
@@ -225,11 +222,26 @@ public final class MapView extends Region {
 
         if (width != mapState.getViewportWidth() || height != mapState.getViewportHeight()) {
             mapState.setViewportSize(width, height);
-            refreshTiles();
+            scheduleRefresh();
         }
 
         drawTiles(width, height);
         layoutLayerNodes(width, height);
+    }
+
+    /**
+     * Schedules a tile refresh on the next FX pulse, coalescing multiple rapid
+     * property changes into a single refresh operation.
+     */
+    private void scheduleRefresh() {
+        if (refreshPending) {
+            return;
+        }
+        refreshPending = true;
+        Platform.runLater(() -> {
+            refreshPending = false;
+            refreshTiles();
+        });
     }
 
     private void initializeProperties() {
@@ -239,15 +251,15 @@ public final class MapView extends Region {
 
         centerLat.addListener((obs, oldValue, newValue) -> {
             mapState.setCenterLat(newValue.doubleValue());
-            refreshTiles();
+            scheduleRefresh();
         });
         centerLon.addListener((obs, oldValue, newValue) -> {
             mapState.setCenterLon(newValue.doubleValue());
-            refreshTiles();
+            scheduleRefresh();
         });
         zoom.addListener((obs, oldValue, newValue) -> {
             mapState.setZoom(newValue.doubleValue());
-            refreshTiles();
+            scheduleRefresh();
         });
     }
 
@@ -270,22 +282,12 @@ public final class MapView extends Region {
     }
 
     private void refreshTiles() {
-        if (!Platform.isFxApplicationThread()) {
-            Platform.runLater(this::refreshTiles);
-            return;
-        }
         if (mapState.getViewportWidth() <= 0 || mapState.getViewportHeight() <= 0) {
             return;
         }
         List<TileCoordinate> visible = mapState.visibleTiles();
         currentVisibleTiles = visible;
-        pruneTileImages(visible);
-        tileManager.refreshTiles(visible, this::handleTileLoaded);
-        requestLayout();
-    }
-
-    private void handleTileLoaded(TileCoordinate coordinate, Image image) {
-        tileImages.put(coordinate, image);
+        tileManager.refreshTiles(visible, (coordinate, image) -> requestLayout());
         requestLayout();
     }
 
@@ -311,14 +313,6 @@ public final class MapView extends Region {
         });
     }
 
-    private void pruneTileImages(List<TileCoordinate> visible) {
-        if (tileImages.isEmpty()) {
-            return;
-        }
-        Set<TileCoordinate> allowed = new HashSet<>(visible);
-        tileImages.keySet().removeIf(coordinate -> !allowed.contains(coordinate));
-    }
-
     private void drawTiles(double width, double height) {
         graphics.clearRect(0.0, 0.0, width, height);
         if (currentVisibleTiles.isEmpty()) {
@@ -332,7 +326,8 @@ public final class MapView extends Region {
         double tileSize = Projection.TILE_SIZE;
 
         for (TileCoordinate tile : currentVisibleTiles) {
-            Image image = tileImages.getOrDefault(tile, PLACEHOLDER);
+            Image cached = tileManager.cachedTile(tile);
+            Image image = cached != null ? cached : PLACEHOLDER;
             double tileOriginX = tile.x() * tileSize;
             double tileOriginY = tile.y() * tileSize;
             double screenX = tileOriginX - centerPixels.x() + halfWidth;

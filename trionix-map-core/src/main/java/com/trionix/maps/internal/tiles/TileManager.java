@@ -96,7 +96,9 @@ public final class TileManager {
                     if (image != null && !image.isError()) {
                         // Cache the tile
                         cache.put(coordinate.zoom(), coordinate.x(), coordinate.y(), image);
-                        // Deliver to UI
+                        // Deliver to UI - even if generation changed, the MapView will
+                        // use cached tiles during redraw and ignore tiles not in the
+                        // current visible set
                         deliverOnFxThread(coordinate, image, consumer);
                     } else {
                         LOG.warn("Failed to decode tile z={}, x={}, y={}",
