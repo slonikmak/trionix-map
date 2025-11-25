@@ -202,7 +202,7 @@ public final class AdvancedMapExample extends Application {
             if (width <= 0.0 || height <= 0.0) {
                 return;
             }
-            int zoomLevel = (int) Math.round(mapView.getZoom());
+            int zoomLevel = (int) Math.floor(mapView.getZoom());
             Projection.PixelCoordinate centerPixels = projection.latLonToPixel(
                     mapView.getCenterLat(), mapView.getCenterLon(), zoomLevel);
             double halfWidth = width / 2.0;
@@ -257,7 +257,7 @@ public final class AdvancedMapExample extends Application {
             if (width <= 0.0 || height <= 0.0) {
                 return;
             }
-            int zoomLevel = (int) Math.round(mapView.getZoom());
+            int zoomLevel = (int) Math.floor(mapView.getZoom());
             Projection.PixelCoordinate centerPixels = projection.latLonToPixel(
                     mapView.getCenterLat(), mapView.getCenterLon(), zoomLevel);
             double halfWidth = width / 2.0;
