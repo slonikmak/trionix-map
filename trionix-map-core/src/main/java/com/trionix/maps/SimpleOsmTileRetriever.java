@@ -1,8 +1,6 @@
 package com.trionix.maps;
 
-import com.trionix.maps.internal.concurrent.TileExecutors;
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -10,17 +8,19 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import javax.imageio.ImageIO;
-import javafx.embed.swing.SwingFXUtils;
 import javafx.scene.image.Image;
 
-/** Default {@link TileRetriever} that pulls PNG tiles from tile.openstreetmap.org. */
+/**
+ * Default {@link TileRetriever} that pulls PNG tiles from tile.openstreetmap.org.
+ * <p>
+ * Uses asynchronous HTTP calls with direct JavaFX Image decoding for optimal performance.
+ */
 public final class SimpleOsmTileRetriever implements TileRetriever {
 
     private static final String DEFAULT_BASE_URL = "https://tile.openstreetmap.org/";
     private static final String DEFAULT_USER_AGENT = "TrionixMapView/0.1 (+https://trionix.example)";
-    private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(5);
-    private static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(30);
 
     private final URI baseUri;
     private final String userAgent;
@@ -37,8 +37,9 @@ public final class SimpleOsmTileRetriever implements TileRetriever {
         this.readTimeout = Objects.requireNonNull(readTimeout, "readTimeout");
         Duration connect = Objects.requireNonNull(connectTimeout, "connectTimeout");
         this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(connect)
-                .executor(TileExecutors.tileExecutor())
+                .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
     }
 
@@ -50,26 +51,15 @@ public final class SimpleOsmTileRetriever implements TileRetriever {
                 .timeout(readTimeout)
                 .header("User-Agent", userAgent)
                 .build();
+
         return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray())
                 .thenApply(response -> {
                     if (response.statusCode() != 200) {
                         throw new TileRetrievalException(
                                 "Unexpected HTTP status " + response.statusCode() + " for tile " + tileUri);
                     }
-                    return decodeImage(response.body(), tileUri);
+                    return new Image(new ByteArrayInputStream(response.body()));
                 });
-    }
-
-    private static Image decodeImage(byte[] bytes, URI tileUri) {
-        try (ByteArrayInputStream stream = new ByteArrayInputStream(bytes)) {
-            var buffered = ImageIO.read(stream);
-            if (buffered == null) {
-                throw new TileRetrievalException("Unable to decode tile " + tileUri);
-            }
-            return SwingFXUtils.toFXImage(buffered, null);
-        } catch (IOException e) {
-            throw new TileRetrievalException("Failed to decode tile " + tileUri, e);
-        }
     }
 
     private static URI sanitizeBaseUrl(String baseUrl) {

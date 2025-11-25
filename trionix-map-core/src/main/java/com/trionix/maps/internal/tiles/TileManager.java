@@ -2,13 +2,10 @@ package com.trionix.maps.internal.tiles;
 
 import com.trionix.maps.TileCache;
 import com.trionix.maps.TileRetriever;
-import com.trionix.maps.internal.concurrent.TileExecutors;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import javafx.application.Platform;
@@ -26,7 +23,7 @@ public final class TileManager {
 
     private final TileCache cache;
     private final TileRetriever retriever;
-    private final Map<TileCoordinate, LoadHandle> inFlight = new ConcurrentHashMap<>();
+    private final Set<TileCoordinate> pendingRequests = ConcurrentHashMap.newKeySet();
     private final AtomicInteger generationCounter = new AtomicInteger();
     private volatile int currentGeneration;
 
@@ -55,7 +52,7 @@ public final class TileManager {
         for (TileCoordinate coordinate : uniqueTiles) {
             Image cached = cache.get(coordinate.zoom(), coordinate.x(), coordinate.y());
             if (cached != null) {
-                deliverOnFxThread(coordinate, cached, consumer, generation);
+                deliverOnFxThread(coordinate, cached, consumer);
                 continue;
             }
             scheduleLoad(coordinate, generation, consumer);
@@ -74,61 +71,48 @@ public final class TileManager {
     }
 
     private void scheduleLoad(TileCoordinate coordinate, int generation, TileConsumer consumer) {
-        inFlight.compute(coordinate, (key, existing) -> {
-            if (existing != null && existing.generation == generation) {
-                return existing;
-            }
-                    CompletableFuture<Image> future = CompletableFuture
-                        .supplyAsync(() -> retriever.loadTile(coordinate.zoom(), coordinate.x(), coordinate.y()),
-                            TileExecutors.tileExecutor())
-                        .thenCompose(tileFuture -> Objects.requireNonNull(tileFuture,
-                            "TileRetriever returned null future"));
-            future.whenComplete((image, error) ->
-                    handleCompletion(coordinate, generation, image, error, consumer));
-            return new LoadHandle(generation, future);
-        });
-    }
-
-    private void handleCompletion(TileCoordinate coordinate, int generation,
-            Image image, Throwable error, TileConsumer consumer) {
-        inFlight.compute(coordinate, (key, handle) -> {
-            if (handle == null || handle.generation != generation) {
-                return handle;
-            }
-            return null;
-        });
-
-        if (generation != currentGeneration) {
-            return; // stale result
+        // Check if already loading this tile
+        if (!pendingRequests.add(coordinate)) {
+            LOG.debug("Skipping duplicate load for z={}, x={}, y={}", 
+                    coordinate.zoom(), coordinate.x(), coordinate.y());
+            return; // Skip duplicate request
         }
 
-        if (error != null) {
-            LOG.warn("Failed to load tile z={}, x={}, y={}",
-                    coordinate.zoom(), coordinate.x(), coordinate.y(), error);
-            return;
-        }
+        LOG.debug("Starting load for z={}, x={}, y={}", 
+                coordinate.zoom(), coordinate.x(), coordinate.y());
 
-        if (image != null) {
-            cache.put(coordinate.zoom(), coordinate.x(), coordinate.y(), image);
-            deliverOnFxThread(coordinate, image, consumer, generation);
-        }
+        // Use the retriever's async method directly
+        retriever.loadTile(coordinate.zoom(), coordinate.x(), coordinate.y())
+                .whenComplete((image, error) -> {
+                    // Always remove from pending requests
+                    pendingRequests.remove(coordinate);
+
+                    if (error != null) {
+                        LOG.warn("Failed to load tile z={}, x={}, y={}",
+                                coordinate.zoom(), coordinate.x(), coordinate.y(), error);
+                        return;
+                    }
+
+                    if (image != null && !image.isError()) {
+                        // Cache the tile
+                        cache.put(coordinate.zoom(), coordinate.x(), coordinate.y(), image);
+                        // Deliver to UI
+                        deliverOnFxThread(coordinate, image, consumer);
+                    } else {
+                        LOG.warn("Failed to decode tile z={}, x={}, y={}",
+                                coordinate.zoom(), coordinate.x(), coordinate.y());
+                    }
+                });
     }
 
     private void deliverOnFxThread(TileCoordinate coordinate, Image image,
-            TileConsumer consumer, int generation) {
-        Runnable delivery = () -> {
-            if (generation == currentGeneration) {
-                consumer.onTileLoaded(coordinate, image);
-            }
-        };
+            TileConsumer consumer) {
+        Runnable delivery = () -> consumer.onTileLoaded(coordinate, image);
         if (Platform.isFxApplicationThread()) {
             delivery.run();
         } else {
             Platform.runLater(delivery);
         }
-    }
-
-    private record LoadHandle(int generation, CompletableFuture<Image> future) {
     }
 
     @FunctionalInterface

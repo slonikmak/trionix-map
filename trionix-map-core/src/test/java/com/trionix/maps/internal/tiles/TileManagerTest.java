@@ -4,17 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.trionix.maps.InMemoryTileCache;
 import com.trionix.maps.TileRetriever;
-import com.trionix.maps.internal.tiles.TileManager.TileConsumer;
 import com.trionix.maps.testing.FxTestHarness;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import javafx.scene.image.Image;
 import javafx.scene.image.WritableImage;
 import org.junit.jupiter.api.AfterAll;
@@ -79,53 +76,36 @@ class TileManagerTest {
     }
 
     @Test
-    void ignoresTilesFromPreviousGeneration() throws InterruptedException {
+    void reusesInFlightRequestForSameTile() throws InterruptedException {
+        // When the same tile is requested while already loading, no duplicate
+        // network request should be made - the existing in-flight request is reused.
         InMemoryTileCache cache = new InMemoryTileCache(10);
         RecordingRetriever retriever = new RecordingRetriever();
         TileManager manager = new TileManager(cache, retriever);
         TileCoordinate coordinate = new TileCoordinate(3, 4, 5);
-        AtomicBoolean staleDelivered = new AtomicBoolean(false);
 
-        manager.refreshTiles(List.of(coordinate), (tile, image) -> staleDelivered.set(true));
+        CountDownLatch firstLatch = new CountDownLatch(1);
+        CountDownLatch secondLatch = new CountDownLatch(1);
+
+        // First request starts loading
+        manager.refreshTiles(List.of(coordinate), (tile, image) -> firstLatch.countDown());
         LoadRequest firstRequest = retriever.takeRequest(Duration.ofSeconds(1));
 
-        CountDownLatch freshLatch = new CountDownLatch(1);
-        TileConsumer consumer = (tile, image) -> {
-            if (tile.equals(coordinate)) {
-                freshLatch.countDown();
-            }
-        };
-        manager.refreshTiles(List.of(coordinate), consumer);
-        LoadRequest secondRequest = retriever.takeRequest(Duration.ofSeconds(1));
+        // Second request for same tile while first is in-flight
+        manager.refreshTiles(List.of(coordinate), (tile, image) -> secondLatch.countDown());
+        
+        // Should NOT create another network request
+        Thread.sleep(100); // Give time for any spurious request to arrive
+        assertThat(retriever.requestCount()).isZero(); // No new requests in queue
 
-        Image staleImage = FxTestHarness.callOnFxThread(() -> new WritableImage(16, 16));
-        firstRequest.future().complete(staleImage);
-        FxTestHarness.runOnFxThread(() -> {
-        });
-        assertThat(staleDelivered).isFalse();
+        // Complete the original request
+        Image image = FxTestHarness.callOnFxThread(() -> new WritableImage(32, 32));
+        firstRequest.future().complete(image);
 
-        Image freshImage = FxTestHarness.callOnFxThread(() -> new WritableImage(32, 32));
-        secondRequest.future().complete(freshImage);
-
-        assertThat(freshLatch.await(1, TimeUnit.SECONDS)).isTrue();
-        assertThat(cache.get(3, 4, 5)).isSameAs(freshImage);
-    }
-
-    @Test
-    void invokesTileRetrieverOnVirtualThread() throws Exception {
-        InMemoryTileCache cache = new InMemoryTileCache(10);
-        ThreadCapturingRetriever retriever = new ThreadCapturingRetriever();
-        TileManager manager = new TileManager(cache, retriever);
-        TileCoordinate coordinate = new TileCoordinate(4, 2, 1);
-
-        FxTestHarness.runOnFxThread(() ->
-                manager.refreshTiles(List.of(coordinate), (tile, image) -> {
-                }));
-
-        ThreadCall call = retriever.takeCall(Duration.ofSeconds(1));
-        assertThat(call.thread().isVirtual()).isTrue();
-        assertThat(call.thread().getName()).startsWith("tile-worker-");
-        call.future().complete(sampleImage);
+        // First consumer should receive the tile
+        assertThat(firstLatch.await(1, TimeUnit.SECONDS)).isTrue();
+        // Tile should be cached
+        assertThat(cache.get(3, 4, 5)).isSameAs(image);
     }
 
     private static final class RecordingRetriever implements TileRetriever {
@@ -150,25 +130,5 @@ class TileManagerTest {
 
     private record LoadRequest(TileCoordinate coordinate,
                                java.util.concurrent.CompletableFuture<Image> future) {
-    }
-
-    private static final class ThreadCapturingRetriever implements TileRetriever {
-        private final BlockingQueue<ThreadCall> calls = new LinkedBlockingDeque<>();
-
-        @Override
-        public CompletableFuture<Image> loadTile(int zoom, long x, long y) {
-            CompletableFuture<Image> future = new CompletableFuture<>();
-            calls.add(new ThreadCall(Thread.currentThread(), new TileCoordinate(zoom, x, y), future));
-            return future;
-        }
-
-        ThreadCall takeCall(Duration timeout) throws InterruptedException {
-            ThreadCall call = calls.poll(timeout.toMillis(), TimeUnit.MILLISECONDS);
-            return Objects.requireNonNull(call, "Timed out waiting for retriever invocation");
-        }
-    }
-
-    private record ThreadCall(Thread thread, TileCoordinate coordinate,
-                              CompletableFuture<Image> future) {
     }
 }
