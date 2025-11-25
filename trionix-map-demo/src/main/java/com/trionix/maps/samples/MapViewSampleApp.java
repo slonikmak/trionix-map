@@ -1,7 +1,8 @@
 package com.trionix.maps.samples;
 
 import com.trionix.maps.MapView;
-import com.trionix.maps.layer.MapLayer;
+import com.trionix.maps.layer.PointMarker;
+import com.trionix.maps.layer.PointMarkerLayer;
 import com.trionix.maps.internal.projection.Projection;
 import com.trionix.maps.internal.projection.WebMercatorProjection;
 import java.util.ArrayList;
@@ -33,7 +34,7 @@ public final class MapViewSampleApp extends Application {
         mapView.setCenterLon(DEFAULT_LON);
         mapView.setZoom(12.0);
 
-        MarkerLayer markerLayer = new MarkerLayer();
+        PointMarkerLayer markerLayer = new PointMarkerLayer();
         markerLayer.addMarker(DEFAULT_LAT, DEFAULT_LON, createMarker("San Francisco"));
         markerLayer.addMarker(37.8199, -122.4783, createMarker("Golden Gate Bridge"));
         mapView.getLayers().add(markerLayer);
@@ -47,7 +48,6 @@ public final class MapViewSampleApp extends Application {
 
     private static Region createMarker(String label) {
         Label marker = new Label(label);
-        marker.setMouseTransparent(true);
         marker.setPadding(new Insets(4, 8, 4, 8));
         marker.setAlignment(Pos.CENTER);
         marker.setStyle("-fx-background-color: rgba(217,30,54,0.95);"
@@ -64,53 +64,5 @@ public final class MapViewSampleApp extends Application {
         launch(args);
     }
 
-    /**
-     * Simple layer that positions {@link Region} markers using Web Mercator math.
-     */
-    private static final class MarkerLayer extends MapLayer {
-        private final Projection projection = new WebMercatorProjection();
-        private final List<Marker> markers = new ArrayList<>();
-
-        void addMarker(double latitude, double longitude, Region node) {
-            Objects.requireNonNull(node, "node");
-            node.setManaged(false);
-            getChildren().add(node);
-            markers.add(new Marker(latitude, longitude, node));
-            requestLayerLayout();
-        }
-
-        @Override
-        public void layoutLayer(MapView mapView) {
-            if (markers.isEmpty()) {
-                return;
-            }
-            double width = getWidth();
-            double height = getHeight();
-            if (width <= 0.0 || height <= 0.0) {
-                return;
-            }
-            int zoomLevel = (int) Math.round(mapView.getZoom());
-            Projection.PixelCoordinate centerPixels = projection.latLonToPixel(
-                    mapView.getCenterLat(), mapView.getCenterLon(), zoomLevel);
-            double halfWidth = width / 2.0;
-            double halfHeight = height / 2.0;
-
-            for (Marker marker : markers) {
-                Projection.PixelCoordinate markerPixels = projection.latLonToPixel(
-                        marker.latitude(), marker.longitude(), zoomLevel);
-                double screenX = markerPixels.x() - centerPixels.x() + halfWidth;
-                double screenY = markerPixels.y() - centerPixels.y() + halfHeight;
-                Region node = marker.node();
-                double markerWidth = node.prefWidth(-1);
-                double markerHeight = node.prefHeight(-1);
-                node.resizeRelocate(screenX - markerWidth / 2.0,
-                        screenY - markerHeight,
-                        markerWidth,
-                        markerHeight);
-            }
-        }
-
-        private record Marker(double latitude, double longitude, Region node) {
-        }
-    }
+    // Using library PointMarkerLayer; demo's custom MarkerLayer removed
 }

@@ -14,15 +14,18 @@ read -p "Введите номер (1, 2 или 3): " choice
 case $choice in
     1)
         echo "Запуск простейшего примера..."
-        mvn -pl trionix-map-demo compile exec:java -Dexec.mainClass="com.trionix.maps.samples.SimpleMapExample"
+        mvn -pl trionix-map-core,trionix-map-demo compile
+        mvn -f trionix-map-demo/pom.xml exec:java -Dexec.mainClass="com.trionix.maps.samples.SimpleMapExample"
         ;;
     2)
         echo "Запуск базового примера..."
-        mvn -pl trionix-map-demo compile exec:java -Dexec.mainClass="com.trionix.maps.samples.MapViewSampleApp"
+        mvn -pl trionix-map-core,trionix-map-demo compile
+        mvn -f trionix-map-demo/pom.xml exec:java -Dexec.mainClass="com.trionix.maps.samples.MapViewSampleApp"
         ;;
     3)
         echo "Запуск продвинутого примера..."
-        mvn -pl trionix-map-demo compile exec:java -Dexec.mainClass="com.trionix.maps.samples.AdvancedMapExample"
+        mvn -pl trionix-map-core,trionix-map-demo compile
+        mvn -f trionix-map-demo/pom.xml exec:java -Dexec.mainClass="com.trionix.maps.samples.AdvancedMapExample"
         ;;
     *)
         echo "Неверный выбор. Пожалуйста, введите 1, 2 или 3."

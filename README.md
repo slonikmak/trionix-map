@@ -85,6 +85,18 @@ mapView.setCenterLat(37.7749);
 mapView.setCenterLon(-122.4194);
 mapView.setZoom(12.0);
 mapView.getLayers().add(new MarkerLayer());
+
+// --- PointMarkerLayer usage example ---
+// A compact example demonstrating adding an interactive marker layer.
+PointMarkerLayer markerLayer = new PointMarkerLayer();
+mapView.getLayers().add(markerLayer);
+
+// create a small visual node for the marker and add it at a lat/lon
+StackPane pin = new StackPane();
+pin.setPrefSize(16, 16);
+PointMarker marker = markerLayer.addMarker(48.8566, 2.3522, pin); // Paris
+marker.setDraggable(true);
+marker.setOnClick(m -> System.out.println("Marker clicked: " + m.getLatitude() + ", " + m.getLongitude()));
 ```
 
 `MapView` must be accessed from the JavaFX Application Thread. Property setters perform latitude/longitude normalization and clamp zoom to the supported range (defaults 1–19). The control automatically requests tiles, caches them, and re-renders when you change the viewport or layer stack.

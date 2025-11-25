@@ -1,6 +1,8 @@
 package com.trionix.maps.samples;
 
 import com.trionix.maps.MapView;
+import com.trionix.maps.layer.PointMarker;
+import com.trionix.maps.layer.PointMarkerLayer;
 import com.trionix.maps.layer.MapLayer;
 import com.trionix.maps.internal.projection.Projection;
 import com.trionix.maps.internal.projection.WebMercatorProjection;
@@ -9,12 +11,18 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.CheckBox;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
+import javafx.event.EventHandler;
 import javafx.scene.control.Label;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Line;
@@ -23,7 +31,12 @@ import javafx.util.Duration;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.scene.control.ListView;
+import javafx.scene.control.TextField;
 
 /**
  * Продвинутый пример использования {@link MapView} с демонстрацией анимации,
@@ -34,6 +47,19 @@ public final class AdvancedMapExample extends Application {
     private MapView mapView;
     private Label infoLabel;
 
+    // Marker layer and demo UI state
+    private PointMarkerLayer markerLayer;
+    private final ObservableList<PointMarker> demoMarkers = FXCollections.observableArrayList();
+    private final Map<PointMarker, String> markerNames = new IdentityHashMap<>();
+    private PointMarker selectedDemoMarker;
+    private ListView<PointMarker> markerListView;
+    private TextField selectedLatField;
+    private TextField selectedLonField;
+    // Projection helper used by the demo for click->lat/lon conversion
+    private final Projection clickProjection = new WebMercatorProjection();
+    // toggle control exposed to selection logic so UI shows draggable state
+    private ToggleButton draggableToggleBtn;
+
     @Override
     public void start(Stage stage) {
         // Создаем компонент карты
@@ -43,11 +69,34 @@ public final class AdvancedMapExample extends Application {
         mapView.setCenterLon(37.6173);
         mapView.setZoom(10.0);
 
+        // Create info label early so handlers can safely reference it
+        infoLabel = new Label();
+        infoLabel.setStyle("-fx-background-color: rgba(255,255,255,0.9); "
+            + "-fx-padding: 10; -fx-font-size: 14;");
+        updateInfoLabel();
+
         // Создаем слой с маркерами
-        MarkerLayer markerLayer = new MarkerLayer();
-        markerLayer.addMarker(55.7558, 37.6173, createMarker("Москва", Color.RED));
-        markerLayer.addMarker(59.9343, 30.3351, createMarker("Санкт-Петербург", Color.BLUE));
-        markerLayer.addMarker(55.7887, 49.1221, createMarker("Казань", Color.GREEN));
+        markerLayer = new PointMarkerLayer();
+        PointMarker moscow = markerLayer.addMarker(55.7558, 37.6173, createMarker("Москва", Color.RED));
+        PointMarker spb = markerLayer.addMarker(59.9343, 30.3351, createMarker("Санкт-Петербург", Color.BLUE));
+        PointMarker kazan = markerLayer.addMarker(55.7887, 49.1221, createMarker("Казань", Color.GREEN));
+        // keep a registry used by the demo UI
+        markerNames.put(moscow, "Москва");
+        demoMarkers.add(moscow);
+        markerNames.put(spb, "Санкт-Петербург");
+        demoMarkers.add(spb);
+        markerNames.put(kazan, "Казань");
+        demoMarkers.add(kazan);
+        // Demonstrate interaction: make Moscow marker draggable and clickable
+        moscow.setDraggable(true);
+        moscow.setOnClick(p -> selectDemoMarker(p));
+        moscow.setOnLocationChanged(p -> { if (p == selectedDemoMarker) updateSelectedCoordinatesUI(p); });
+
+        // set onClick for the other markers too so clicking picks them
+        spb.setOnClick(p -> selectDemoMarker(p));
+        spb.setOnLocationChanged(p -> { if (p == selectedDemoMarker) updateSelectedCoordinatesUI(p); });
+        kazan.setOnClick(p -> selectDemoMarker(p));
+        kazan.setOnLocationChanged(p -> { if (p == selectedDemoMarker) updateSelectedCoordinatesUI(p); });
 
         // Создаем слой с линиями
         RouteLayer routeLayer = new RouteLayer();
@@ -59,12 +108,6 @@ public final class AdvancedMapExample extends Application {
 
         // Создаем панель управления
         VBox controlPanel = createControlPanel();
-
-        // Создаем информационную панель
-        infoLabel = new Label();
-        infoLabel.setStyle("-fx-background-color: rgba(255,255,255,0.9); "
-                + "-fx-padding: 10; -fx-font-size: 14;");
-        updateInfoLabel();
 
         // Подписываемся на изменения свойств карты
         mapView.centerLatProperty().addListener((obs, old, newVal) -> updateInfoLabel());
@@ -91,16 +134,11 @@ public final class AdvancedMapExample extends Application {
         VBox panel = new VBox(15);
         panel.setPadding(new Insets(20));
         panel.setStyle("-fx-background-color: #f5f5f5;");
-        panel.setPrefWidth(200);
+        panel.setPrefWidth(420);
 
         Label title = new Label("Управление картой");
         title.setStyle("-fx-font-size: 16; -fx-font-weight: bold;");
 
-        // Кнопки для быстрой навигации
-        Button moscowBtn = createNavigationButton("Москва", 55.7558, 37.6173, 12.0);
-        Button spbBtn = createNavigationButton("Санкт-Петербург", 59.9343, 30.3351, 12.0);
-        Button kazanBtn = createNavigationButton("Казань", 55.7887, 49.1221, 12.0);
-        Button russiaBtn = createNavigationButton("Россия", 61.5240, 105.3188, 3.0);
 
         // Кнопки управления масштабом
         HBox zoomControls = new HBox(10);
@@ -112,24 +150,164 @@ public final class AdvancedMapExample extends Application {
 
         panel.getChildren().addAll(
                 title,
-                new Label("Быстрая навигация:"),
-                moscowBtn,
-                spbBtn,
-                kazanBtn,
-                russiaBtn,
+                // quick navigation removed — use marker list to move to points
                 new Label("Масштаб:"),
                 zoomControls
         );
 
+        // --- Marker management UI ------------------------------------------------
+        Label markerTitle = new Label("Маркеры");
+        markerTitle.setStyle("-fx-font-size: 14; -fx-font-weight: bold;");
+
+        TextField nameField = new TextField();
+        nameField.setPromptText("Имя маркера");
+
+        TextField latField = new TextField();
+        latField.setPromptText("Широта (например 55.75)");
+        TextField lonField = new TextField();
+        lonField.setPromptText("Долгота (например 37.62)");
+
+        Button addAtCenterBtn = new Button("Добавить в центр");
+        addAtCenterBtn.setOnAction(e -> {
+            String name = nameField.getText().isBlank() ? "Marker " + (demoMarkers.size() + 1) : nameField.getText();
+            PointMarker m = markerLayer.addMarker(mapView.getCenterLat(), mapView.getCenterLon(), createMarker(name, Color.DARKGRAY));
+            markerNames.put(m, name);
+            demoMarkers.add(m);
+            m.setOnClick(p -> selectDemoMarker(p));
+            m.setOnLocationChanged(p -> { if (p == selectedDemoMarker) updateSelectedCoordinatesUI(p); });
+        });
+
+        Button addAtLatLonBtn = new Button("Добавить по координатам");
+        addAtLatLonBtn.setOnAction(e -> {
+            try {
+                double lat = Double.parseDouble(latField.getText());
+                double lon = Double.parseDouble(lonField.getText());
+                String name = nameField.getText().isBlank() ? String.format("%.4f,%.4f", lat, lon) : nameField.getText();
+                PointMarker m = markerLayer.addMarker(lat, lon, createMarker(name, Color.DARKBLUE));
+                markerNames.put(m, name);
+                demoMarkers.add(m);
+                m.setOnClick(p -> selectDemoMarker(p));
+                m.setOnLocationChanged(p -> { if (p == selectedDemoMarker) updateSelectedCoordinatesUI(p); });
+            } catch (NumberFormatException ex) {
+                infoLabel.setText("Ошибка: неверные координаты");
+            }
+        });
+
+        markerListView = new ListView<>(demoMarkers);
+        ListView<PointMarker> listView = markerListView;
+        listView.setMaxHeight(180);
+        listView.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override
+            protected void updateItem(PointMarker item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                } else {
+                    setText(markerNames.getOrDefault(item, "marker"));
+                }
+            }
+        });
+        listView.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> {
+            selectDemoMarker(sel);
+            if (sel != null) {
+                // center the map to the selected marker (keep current zoom)
+                mapView.flyTo(sel.getLatitude(), sel.getLongitude(), mapView.getZoom(), Duration.seconds(0.6));
+            }
+        });
+
+        Button deleteBtn = new Button("Удалить");
+        deleteBtn.setOnAction(e -> {
+            PointMarker sel = listView.getSelectionModel().getSelectedItem();
+            if (sel != null) {
+                markerLayer.removeMarker(sel);
+                demoMarkers.remove(sel);
+                markerNames.remove(sel);
+                if (sel == selectedDemoMarker) {
+                    selectDemoMarker(null);
+                }
+            }
+        });
+
+        Button moveToCenterBtn = new Button("Переместить в центр");
+        moveToCenterBtn.setOnAction(e -> {
+            PointMarker sel = listView.getSelectionModel().getSelectedItem();
+            if (sel != null) {
+                sel.setLocation(mapView.getCenterLat(), mapView.getCenterLon());
+            }
+        });
+
+        draggableToggleBtn = new ToggleButton("Режим перетаскивания");
+        draggableToggleBtn.setMaxWidth(Double.MAX_VALUE);
+        draggableToggleBtn.setOnAction(e -> {
+            PointMarker sel = listView.getSelectionModel().getSelectedItem();
+            if (sel != null) {
+                boolean enabled = draggableToggleBtn.isSelected();
+                sel.setDraggable(enabled);
+            }
+        });
+
+        CheckBox addOnClick = new CheckBox("Добавлять маркер по клику");
+        EventHandler<MouseEvent> clickHandler = ev -> {
+            if (ev.getButton() != MouseButton.PRIMARY || !ev.isStillSincePress()) {
+                return;
+            }
+            var local = mapView.sceneToLocal(ev.getSceneX(), ev.getSceneY());
+            int zoomLevel = Math.max(0, (int) Math.floor(mapView.getZoom()));
+            Projection.PixelCoordinate centerPixels = clickProjection.latLonToPixel(
+                    mapView.getCenterLat(), mapView.getCenterLon(), zoomLevel);
+            double offsetX = local.getX() - mapView.getWidth() / 2.0;
+            double offsetY = local.getY() - mapView.getHeight() / 2.0;
+            double pixelX = centerPixels.x() + offsetX;
+            double pixelY = centerPixels.y() + offsetY;
+            var latlon = clickProjection.pixelToLatLon(pixelX, pixelY, zoomLevel);
+            String name = nameField.getText().isBlank() ? String.format("%.4f,%.4f", latlon.latitude(), latlon.longitude()) : nameField.getText();
+            PointMarker m = markerLayer.addMarker(latlon.latitude(), latlon.longitude(), createMarker(name, Color.CORAL));
+            markerNames.put(m, name);
+            demoMarkers.add(m);
+            m.setOnClick(p -> selectDemoMarker(p));
+            m.setOnLocationChanged(p -> { if (p == selectedDemoMarker) updateSelectedCoordinatesUI(p); });
+        };
+
+        // attach/detach the click handler when checkbox toggles
+        addOnClick.selectedProperty().addListener((obs, old, nw) -> {
+            if (nw) {
+                mapView.addEventHandler(MouseEvent.MOUSE_CLICKED, clickHandler);
+            } else {
+                mapView.removeEventHandler(MouseEvent.MOUSE_CLICKED, clickHandler);
+            }
+        });
+
+        // create readonly fields to display the coordinates of the selected marker
+        selectedLatField = new TextField();
+        selectedLatField.setEditable(false);
+        selectedLatField.setPromptText("Широта");
+        selectedLonField = new TextField();
+        selectedLonField.setEditable(false);
+        selectedLonField.setPromptText("Долгота");
+
+        panel.getChildren().addAll(
+                new Label(""),
+                markerTitle,
+                nameField,
+                new HBox(8, latField, lonField),
+                new HBox(8, addAtCenterBtn, addAtLatLonBtn),
+                listView,
+            new HBox(8, deleteBtn, moveToCenterBtn),
+            new Label("Координаты выделенного маркера:"),
+            new HBox(8, selectedLatField, selectedLonField)
+        );
+
+            HBox toggleRow = new HBox(8, draggableToggleBtn);
+            HBox.setHgrow(draggableToggleBtn, Priority.ALWAYS);
+            panel.getChildren().add(toggleRow);
+
+            // finally add the click toggle control at the bottom
+            panel.getChildren().add(addOnClick);
+
         return panel;
     }
 
-    private Button createNavigationButton(String name, double lat, double lon, double zoom) {
-        Button btn = new Button(name);
-        btn.setMaxWidth(Double.MAX_VALUE);
-        btn.setOnAction(e -> mapView.flyTo(lat, lon, zoom, Duration.seconds(1.5)));
-        return btn;
-    }
+    // Navigation helper removed — movement now happens by selecting markers in the list
 
     private void updateInfoLabel() {
         String info = String.format(
@@ -143,7 +321,6 @@ public final class AdvancedMapExample extends Application {
 
     private Region createMarker(String label, Color color) {
         StackPane marker = new StackPane();
-        marker.setMouseTransparent(true);
 
         // Создаем круг для маркера
         Circle circle = new Circle(12);
@@ -177,57 +354,50 @@ public final class AdvancedMapExample extends Application {
         launch(args);
     }
 
-    /**
-     * Слой для отображения маркеров на карте.
-     */
-    private static final class MarkerLayer extends MapLayer {
-        private final Projection projection = new WebMercatorProjection();
-        private final List<Marker> markers = new ArrayList<>();
-
-        void addMarker(double latitude, double longitude, Region node) {
-            Objects.requireNonNull(node, "node");
-            node.setManaged(false);
-            getChildren().add(node);
-            markers.add(new Marker(latitude, longitude, node));
-            requestLayerLayout();
+    private void selectDemoMarker(PointMarker marker) {
+        // clear previous highlight
+        if (selectedDemoMarker != null && selectedDemoMarker.getNode() != null) {
+            selectedDemoMarker.getNode().setStyle("");
         }
-
-        @Override
-        public void layoutLayer(MapView mapView) {
-            if (markers.isEmpty()) {
-                return;
-            }
-            double width = getWidth();
-            double height = getHeight();
-            if (width <= 0.0 || height <= 0.0) {
-                return;
-            }
-            int zoomLevel = (int) Math.floor(mapView.getZoom());
-            Projection.PixelCoordinate centerPixels = projection.latLonToPixel(
-                    mapView.getCenterLat(), mapView.getCenterLon(), zoomLevel);
-            double halfWidth = width / 2.0;
-            double halfHeight = height / 2.0;
-
-            for (Marker marker : markers) {
-                Projection.PixelCoordinate markerPixels = projection.latLonToPixel(
-                        marker.latitude(), marker.longitude(), zoomLevel);
-                double screenX = markerPixels.x() - centerPixels.x() + halfWidth;
-                double screenY = markerPixels.y() - centerPixels.y() + halfHeight;
-                Region node = marker.node();
-                double markerWidth = node.prefWidth(-1);
-                double markerHeight = node.prefHeight(-1);
-                node.resizeRelocate(
-                        screenX - markerWidth / 2.0,
-                        screenY - markerHeight,
-                        markerWidth,
-                        markerHeight
-                );
+        selectedDemoMarker = marker;
+        // reflect selection in the list view
+        if (markerListView != null) {
+            if (marker == null) {
+                markerListView.getSelectionModel().clearSelection();
+            } else {
+                markerListView.getSelectionModel().select(marker);
+                markerListView.scrollTo(marker);
             }
         }
-
-        private record Marker(double latitude, double longitude, Region node) {
+        if (marker != null && marker.getNode() != null) {
+            marker.getNode().setStyle("-fx-border-color: #FFD54F; -fx-border-width: 2; -fx-padding: 2;");
+            infoLabel.setText("Selected: " + markerNames.getOrDefault(marker, String.format("%.4f,%.4f", marker.getLatitude(), marker.getLongitude())));
+            updateSelectedCoordinatesUI(marker);
+            if (draggableToggleBtn != null) {
+                draggableToggleBtn.setSelected(marker.isDraggable());
+            }
+        }
+        else {
+            if (draggableToggleBtn != null) {
+                draggableToggleBtn.setSelected(false);
+            }
+            // clear coordinate display
+            if (selectedLatField != null) selectedLatField.setText("");
+            if (selectedLonField != null) selectedLonField.setText("");
         }
     }
+
+    private void updateSelectedCoordinatesUI(PointMarker marker) {
+        if (marker == null) return;
+        if (selectedLatField != null) {
+            selectedLatField.setText(String.format("%.6f", marker.getLatitude()));
+        }
+        if (selectedLonField != null) {
+            selectedLonField.setText(String.format("%.6f", marker.getLongitude()));
+        }
+    }
+
+    // Using library PointMarkerLayer in place of demo's MarkerLayer; interaction enabled above
 
     /**
      * Слой для отображения маршрутов (линий) между точками на карте.
