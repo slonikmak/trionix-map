@@ -3,7 +3,7 @@
 ## Purpose
 Provide a reusable `PointMarkerLayer` for displaying customizable, interactive markers at geographic coordinates on a `MapView`. This layer supports any JavaFX `Node` as marker visual, programmatic and interactive (drag-and-drop) repositioning, click callbacks, and marker removal.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: PointMarkerLayer Class
 The system SHALL provide a `PointMarkerLayer` class extending `MapLayer` for displaying point markers on the map.

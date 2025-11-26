@@ -62,4 +62,30 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Convenience profile: configures the JavaFX plugin with a sensible default
+             so you can run the demo from the reactor with:
+                 mvn -pl trionix-map-demo -am -Prun-demo javafx:run
+        -->
+        <profile>
+            <id>run-demo</id>
+            <properties>
+                <!-- Default demo main class. Override with -Djavafx.mainClass if needed -->
+                <javafx.mainClass>com.trionix.maps.samples.AdvancedMapExample</javafx.mainClass>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.openjfx</groupId>
+                        <artifactId>javafx-maven-plugin</artifactId>
+                        <version>0.0.8</version>
+                        <configuration>
+                            <mainClass>${javafx.mainClass}</mainClass>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

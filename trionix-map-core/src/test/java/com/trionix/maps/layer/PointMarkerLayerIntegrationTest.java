@@ -11,7 +11,6 @@ import javafx.scene.layout.Region;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
 
-@Disabled("Flaky: interactive drag tests need more reliable event simulation")
 class PointMarkerLayerIntegrationTest {
 
     @Test
@@ -40,13 +39,14 @@ class PointMarkerLayerIntegrationTest {
                 double mapLat = view.getCenterLat();
                 double mapLon = view.getCenterLon();
 
-                // Simulate drag from the marker's actual scene center to the right
+                // Simulate drag using the node-local coordinates to avoid scene/local conversion
                 Region node = (Region) marker.getNode();
-                var bounds = node.localToScene(node.getLayoutBounds());
-                double startX = bounds.getMinX() + bounds.getWidth() / 2.0;
-                double startY = bounds.getMinY() + bounds.getHeight() / 2.0;
+                double startX = node.getLayoutX() + node.getBoundsInLocal().getWidth() / 2.0;
+                double startY = node.getLayoutY() + node.getBoundsInLocal().getHeight() / 2.0;
                 double endX = startX + 100.0;
 
+                // Fire events directly with local coordinates (previous polyline tests used the same
+                // technique and proved reliable in headless CI environments)
                 node.fireEvent(mousePressed(startX, startY));
                 node.fireEvent(mouseDragged(endX, startY));
                 node.fireEvent(mouseReleased(endX, startY));
@@ -58,6 +58,46 @@ class PointMarkerLayerIntegrationTest {
                 // Marker coords should have changed due to drag
                 assertThat(marker.getLatitude()).isNotEqualTo(initialLat);
                 assertThat(marker.getLongitude()).isNotEqualTo(initialLon);
+            });
+        }
+    }
+
+    @Test
+    void nonDraggable_marker_doesNotMove_whenMouseDragged() {
+        try (var mounted = MapViewTestHarness.mount(MapView::new, 512.0, 512.0)) {
+            MapView view = mounted.mapView();
+
+            final PointMarker[] markerRef = new PointMarker[1];
+
+            FxTestHarness.runOnFxThread(() -> {
+                PointMarkerLayer layer = new PointMarkerLayer();
+                view.getLayers().add(layer);
+                Region node = new Region();
+                node.setPrefSize(16.0, 16.0);
+                PointMarker marker = layer.addMarker(view.getCenterLat(), view.getCenterLon(), node);
+                // marker remains non-draggable
+                markerRef[0] = marker;
+            });
+
+            mounted.layout();
+
+            FxTestHarness.runOnFxThread(() -> {
+                PointMarker marker = markerRef[0];
+                double initialLat = marker.getLatitude();
+                double initialLon = marker.getLongitude();
+
+                Region node = (Region) marker.getNode();
+                double startX = node.getLayoutX() + node.getBoundsInLocal().getWidth() / 2.0;
+                double startY = node.getLayoutY() + node.getBoundsInLocal().getHeight() / 2.0;
+                double endX = startX + 100.0;
+
+                node.fireEvent(mousePressed(startX, startY));
+                node.fireEvent(mouseDragged(endX, startY));
+                node.fireEvent(mouseReleased(endX, startY));
+
+                // Marker coords should NOT have changed for non-draggable marker
+                assertThat(marker.getLatitude()).isEqualTo(initialLat);
+                assertThat(marker.getLongitude()).isEqualTo(initialLon);
             });
         }
     }

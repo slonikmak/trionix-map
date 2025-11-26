@@ -25,7 +25,9 @@ import javafx.scene.layout.VBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
-import javafx.scene.shape.Line;
+import com.trionix.maps.GeoPoint;
+import com.trionix.maps.layer.Polyline;
+import com.trionix.maps.layer.PolylineLayer;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
@@ -36,6 +38,8 @@ import java.util.Map;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.control.ListView;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.ColorPicker;
 import javafx.scene.control.TextField;
 
 /**
@@ -49,6 +53,15 @@ public final class AdvancedMapExample extends Application {
 
     // Marker layer and demo UI state
     private PointMarkerLayer markerLayer;
+    // Polyline route layer
+    private PolylineLayer polylineLayer;
+    // Drawing state
+    private boolean drawingMode = false;
+    private Polyline currentDraft;
+    private ListView<Polyline> polylineListView;
+    private ColorPicker selectedRouteColorPicker;
+    private Button finishDrawingBtn;
+    private Button cancelDrawingBtn;
     private final ObservableList<PointMarker> demoMarkers = FXCollections.observableArrayList();
     private final Map<PointMarker, String> markerNames = new IdentityHashMap<>();
     private PointMarker selectedDemoMarker;
@@ -98,16 +111,67 @@ public final class AdvancedMapExample extends Application {
         kazan.setOnClick(p -> selectDemoMarker(p));
         kazan.setOnLocationChanged(p -> { if (p == selectedDemoMarker) updateSelectedCoordinatesUI(p); });
 
-        // Создаем слой с линиями
-        RouteLayer routeLayer = new RouteLayer();
-        routeLayer.addRoute(55.7558, 37.6173, 59.9343, 30.3351, Color.PURPLE);
-        routeLayer.addRoute(55.7558, 37.6173, 55.7887, 49.1221, Color.ORANGE);
+        // Создаем слой с путями (polyline)
+        this.polylineLayer = new PolylineLayer();
+        // example route: Moscow -> St Petersburg
+        Polyline route1 = new Polyline();
+        route1.addPoint(GeoPoint.of(55.7558, 37.6173));
+        route1.addPoint(GeoPoint.of(59.9343, 30.3351));
+        route1.setStrokeColor(Color.PURPLE);
+        route1.setStrokeWidth(3.0);
+        route1.setMarkersVisible(false);
+        polylineLayer.addPolyline(route1);
+
+        // example route: Moscow -> Kazan
+        Polyline route2 = new Polyline();
+        route2.addPoint(GeoPoint.of(55.7558, 37.6173));
+        route2.addPoint(GeoPoint.of(55.7887, 49.1221));
+        route2.setStrokeColor(Color.ORANGE);
+        route2.setStrokeWidth(3.0);
+        route2.setMarkersVisible(false);
+        polylineLayer.addPolyline(route2);
 
         // Добавляем слои на карту
-        mapView.getLayers().addAll(routeLayer, markerLayer);
+        mapView.getLayers().addAll(polylineLayer, markerLayer);
 
         // Создаем панель управления
         VBox controlPanel = createControlPanel();
+
+        // Global draw click handler — adds vertices when drawing mode is active
+        mapView.addEventHandler(MouseEvent.MOUSE_CLICKED, ev -> {
+            if (!drawingMode) {
+                return;
+            }
+            // Only respond to primary clicks
+            if (ev.getButton() != MouseButton.PRIMARY || !ev.isStillSincePress()) {
+                return;
+            }
+            // Convert to lat/lon
+            var local = mapView.sceneToLocal(ev.getSceneX(), ev.getSceneY());
+            int zoomLevel = Math.max(0, (int) Math.floor(mapView.getZoom()));
+            Projection.PixelCoordinate centerPixels = clickProjection.latLonToPixel(
+                    mapView.getCenterLat(), mapView.getCenterLon(), zoomLevel);
+            double offsetX = local.getX() - mapView.getWidth() / 2.0;
+            double offsetY = local.getY() - mapView.getHeight() / 2.0;
+            double pixelX = centerPixels.x() + offsetX;
+            double pixelY = centerPixels.y() + offsetY;
+            var latlon = clickProjection.pixelToLatLon(pixelX, pixelY, zoomLevel);
+
+            if (currentDraft == null) {
+                currentDraft = new Polyline();
+                currentDraft.setStrokeColor(selectedRouteColorPicker != null ? selectedRouteColorPicker.getValue() : Color.PURPLE);
+                currentDraft.setStrokeWidth(3.0);
+                currentDraft.setMarkersVisible(true);
+                currentDraft.setEditable(true);
+                polylineLayer.addPolyline(currentDraft);
+                if (polylineListView != null) {
+                    polylineListView.getSelectionModel().select(currentDraft);
+                }
+            }
+
+            currentDraft.addPoint(GeoPoint.of(latlon.latitude(), latlon.longitude()));
+            ev.consume();
+        });
 
         // Подписываемся на изменения свойств карты
         mapView.centerLatProperty().addListener((obs, old, newVal) -> updateInfoLabel());
@@ -251,6 +315,10 @@ public final class AdvancedMapExample extends Application {
             if (ev.getButton() != MouseButton.PRIMARY || !ev.isStillSincePress()) {
                 return;
             }
+            // do not add point markers while the user is drawing a route
+            if (drawingMode) {
+                return;
+            }
             var local = mapView.sceneToLocal(ev.getSceneX(), ev.getSceneY());
             int zoomLevel = Math.max(0, (int) Math.floor(mapView.getZoom()));
             Projection.PixelCoordinate centerPixels = clickProjection.latLonToPixel(
@@ -303,6 +371,188 @@ public final class AdvancedMapExample extends Application {
 
             // finally add the click toggle control at the bottom
             panel.getChildren().add(addOnClick);
+
+        // --- Routes management UI ------------------------------------------------
+        Label routesTitle = new Label("Пути");
+        routesTitle.setStyle("-fx-font-size: 14; -fx-font-weight: bold;");
+
+        ComboBox<PointMarker> startSelector = new ComboBox<>(demoMarkers);
+        ComboBox<PointMarker> endSelector = new ComboBox<>(demoMarkers);
+        startSelector.setPromptText("Источник (маркер)");
+        endSelector.setPromptText("Приёмник (маркер)");
+        // render nice names in the combo boxes
+        startSelector.setCellFactory(cb -> new javafx.scene.control.ListCell<>() {
+            @Override
+            protected void updateItem(PointMarker item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : markerNames.getOrDefault(item, "marker"));
+            }
+        });
+        startSelector.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override
+            protected void updateItem(PointMarker item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : markerNames.getOrDefault(item, "marker"));
+            }
+        });
+        endSelector.setCellFactory(startSelector.getCellFactory());
+        endSelector.setButtonCell(startSelector.getButtonCell());
+
+        ColorPicker colorPicker = new ColorPicker(Color.PURPLE);
+
+        Button createRouteBtn = new Button("Создать путь между маркерами");
+        createRouteBtn.setOnAction(e -> {
+            PointMarker a = startSelector.getValue();
+            PointMarker b = endSelector.getValue();
+            if (a == null || b == null) {
+                infoLabel.setText("Выберите источник и приёмник маркеров для создания пути");
+                return;
+            }
+            Polyline route = new Polyline();
+            route.addPoint(GeoPoint.of(a.getLatitude(), a.getLongitude()));
+            route.addPoint(GeoPoint.of(b.getLatitude(), b.getLongitude()));
+            route.setStrokeColor(colorPicker.getValue());
+            route.setStrokeWidth(3.0);
+            route.setMarkersVisible(true);
+            // keep routes editable by default so demo user can drag vertices
+            route.setEditable(true);
+            polylineLayer.addPolyline(route);
+            infoLabel.setText("Путь создан: " + markerNames.getOrDefault(a, "a") + " → " + markerNames.getOrDefault(b, "b"));
+        });
+
+        CheckBox showVertexMarkers = new CheckBox("Показывать маркеры вершин");
+        showVertexMarkers.setOnAction(e -> {
+            boolean show = showVertexMarkers.isSelected();
+            polylineLayer.getPolylines().forEach(p -> p.setMarkersVisible(show));
+            polylineLayer.requestLayerLayout();
+        });
+
+        CheckBox enableEditing = new CheckBox("Редактируемые вершины");
+        enableEditing.setOnAction(e -> {
+            boolean editable = enableEditing.isSelected();
+            polylineLayer.getPolylines().forEach(p -> p.setEditable(editable));
+            polylineLayer.requestLayerLayout();
+        });
+
+        Button clearRoutesBtn = new Button("Очистить все пути");
+        clearRoutesBtn.setOnAction(e -> {
+            polylineLayer.getPolylines().clear();
+        });
+
+        // Drawing controls: toggle + finish/cancel
+        ToggleButton drawToggle = new ToggleButton("Режим рисования");
+        finishDrawingBtn = new Button("Завершить путь");
+        cancelDrawingBtn = new Button("Отменить");
+        finishDrawingBtn.setDisable(true);
+        cancelDrawingBtn.setDisable(true);
+
+        drawToggle.setOnAction(e -> {
+            drawingMode = drawToggle.isSelected();
+            finishDrawingBtn.setDisable(!drawingMode);
+            cancelDrawingBtn.setDisable(!drawingMode);
+            if (!drawingMode) {
+                // leaving draw mode — keep draft if present
+            } else {
+                // entering draw mode — start fresh
+                currentDraft = null;
+            }
+        });
+
+        finishDrawingBtn.setOnAction(e -> {
+            drawingMode = false;
+            drawToggle.setSelected(false);
+            finishDrawingBtn.setDisable(true);
+            cancelDrawingBtn.setDisable(true);
+            if (currentDraft != null && currentDraft.getPoints().size() < 2) {
+                polylineLayer.getPolylines().remove(currentDraft);
+            }
+            currentDraft = null;
+        });
+
+        cancelDrawingBtn.setOnAction(e -> {
+            drawingMode = false;
+            drawToggle.setSelected(false);
+            finishDrawingBtn.setDisable(true);
+            cancelDrawingBtn.setDisable(true);
+            if (currentDraft != null) {
+                polylineLayer.getPolylines().remove(currentDraft);
+            }
+            currentDraft = null;
+        });
+
+        VBox routeControls = new VBox(8,
+                routesTitle,
+                new HBox(8, startSelector, endSelector),
+                new HBox(8, new Label("Цвет:"), colorPicker),
+                createRouteBtn,
+                showVertexMarkers,
+                enableEditing,
+                clearRoutesBtn
+        );
+        routeControls.setPadding(new Insets(8, 0, 0, 0));
+        routeControls.getChildren().add(new HBox(8, drawToggle, finishDrawingBtn, cancelDrawingBtn));
+        panel.getChildren().add(routeControls);
+
+        // Polylines list with per-route controls
+        Label existingRoutesTitle = new Label("Существующие пути");
+        existingRoutesTitle.setStyle("-fx-font-size: 12; -fx-font-weight: bold;");
+
+        polylineListView = new ListView<>(polylineLayer.getPolylines());
+        polylineListView.setPrefHeight(120);
+        polylineListView.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override
+            protected void updateItem(Polyline item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    int idx = getIndex() + 1;
+                    setText("Путь " + idx + " (" + item.getPoints().size() + " точек)");
+                    javafx.scene.shape.Rectangle swatch = new javafx.scene.shape.Rectangle(16, 12, item.getStrokeColor());
+                    swatch.setStroke(Color.BLACK);
+                    setGraphic(swatch);
+                }
+            }
+        });
+
+        selectedRouteColorPicker = new ColorPicker(Color.PURPLE);
+        Button applyColorBtn = new Button("Применить цвет");
+        Button removeRouteBtn = new Button("Удалить путь");
+
+        applyColorBtn.setOnAction(e -> {
+            Polyline sel = polylineListView.getSelectionModel().getSelectedItem();
+            if (sel != null) {
+                sel.setStrokeColor(selectedRouteColorPicker.getValue());
+                polylineLayer.requestLayerLayout();
+            }
+        });
+
+        removeRouteBtn.setOnAction(e -> {
+            Polyline sel = polylineListView.getSelectionModel().getSelectedItem();
+            if (sel != null) {
+                polylineLayer.getPolylines().remove(sel);
+            }
+        });
+
+        // update color picker when selection changes
+        polylineListView.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> {
+            if (sel == null) {
+                selectedRouteColorPicker.setDisable(true);
+                applyColorBtn.setDisable(true);
+                removeRouteBtn.setDisable(true);
+            } else {
+                selectedRouteColorPicker.setDisable(false);
+                applyColorBtn.setDisable(false);
+                removeRouteBtn.setDisable(false);
+                selectedRouteColorPicker.setValue(sel.getStrokeColor());
+            }
+        });
+
+        HBox perRouteRow = new HBox(8, selectedRouteColorPicker, applyColorBtn, removeRouteBtn);
+        perRouteRow.setPadding(new Insets(6, 0, 0, 0));
+
+        panel.getChildren().addAll(new Label(""), existingRoutesTitle, polylineListView, perRouteRow);
 
         return panel;
     }
@@ -399,59 +649,5 @@ public final class AdvancedMapExample extends Application {
 
     // Using library PointMarkerLayer in place of demo's MarkerLayer; interaction enabled above
 
-    /**
-     * Слой для отображения маршрутов (линий) между точками на карте.
-     */
-    private static final class RouteLayer extends MapLayer {
-        private final Projection projection = new WebMercatorProjection();
-        private final List<Route> routes = new ArrayList<>();
-
-        void addRoute(double lat1, double lon1, double lat2, double lon2, Color color) {
-            Line line = new Line();
-            line.setStroke(color);
-            line.setStrokeWidth(3);
-            line.setManaged(false);
-            line.setMouseTransparent(true);
-            getChildren().add(line);
-            routes.add(new Route(lat1, lon1, lat2, lon2, line));
-            requestLayerLayout();
-        }
-
-        @Override
-        public void layoutLayer(MapView mapView) {
-            if (routes.isEmpty()) {
-                return;
-            }
-            double width = getWidth();
-            double height = getHeight();
-            if (width <= 0.0 || height <= 0.0) {
-                return;
-            }
-            int zoomLevel = (int) Math.floor(mapView.getZoom());
-            Projection.PixelCoordinate centerPixels = projection.latLonToPixel(
-                    mapView.getCenterLat(), mapView.getCenterLon(), zoomLevel);
-            double halfWidth = width / 2.0;
-            double halfHeight = height / 2.0;
-
-            for (Route route : routes) {
-                Projection.PixelCoordinate start = projection.latLonToPixel(
-                        route.lat1(), route.lon1(), zoomLevel);
-                Projection.PixelCoordinate end = projection.latLonToPixel(
-                        route.lat2(), route.lon2(), zoomLevel);
-
-                double startX = start.x() - centerPixels.x() + halfWidth;
-                double startY = start.y() - centerPixels.y() + halfHeight;
-                double endX = end.x() - centerPixels.x() + halfWidth;
-                double endY = end.y() - centerPixels.y() + halfHeight;
-
-                route.line().setStartX(startX);
-                route.line().setStartY(startY);
-                route.line().setEndX(endX);
-                route.line().setEndY(endY);
-            }
-        }
-
-        private record Route(double lat1, double lon1, double lat2, double lon2, Line line) {
-        }
-    }
+    
 }

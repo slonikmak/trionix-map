@@ -3,32 +3,13 @@
 Write-Host "Trionix Maps - Примеры использования" -ForegroundColor Cyan
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Выберите пример для запуска:"
-Write-Host "1. Простейший пример (SimpleMapExample) - всего 20 строк кода"
-Write-Host "2. Базовый пример (MapViewSampleApp) - карта с маркерами"
-Write-Host "3. Продвинутый пример (AdvancedMapExample) - полнофункциональное приложение"
-Write-Host ""
+Write-Host "Запуск продвинутого примера (AdvancedMapExample)..." -ForegroundColor Green
+# Build required modules and run the AdvancedMapExample using the JavaFX maven plugin.
+# Uses -pl with -am so the core module is built into the reactor classpath.
+# The demo module has a convenience profile (`run-demo`) which sets the default main class.
+# This avoids shell quoting issues with -Djavafx.mainClass on some platforms.
+# Ensure the core library is available on the local repo/classpath for the demo run
+mvn -pl trionix-map-core -am -DskipTests=true install
 
-$choice = Read-Host "Введите номер (1, 2 или 3)"
-
-switch ($choice) {
-    "1" {
-        Write-Host "Запуск простейшего примера..." -ForegroundColor Green
-        mvn -pl trionix-map-core,trionix-map-demo compile
-        mvn -f trionix-map-demo/pom.xml exec:java "-Dexec.mainClass=com.trionix.maps.samples.SimpleMapExample"
-    }
-    "2" {
-        Write-Host "Запуск базового примера..." -ForegroundColor Green
-        mvn -pl trionix-map-core,trionix-map-demo compile
-        mvn -f trionix-map-demo/pom.xml exec:java "-Dexec.mainClass=com.trionix.maps.samples.MapViewSampleApp"
-    }
-    "3" {
-        Write-Host "Запуск продвинутого примера..." -ForegroundColor Green
-        mvn -pl trionix-map-core,trionix-map-demo compile
-        mvn -f trionix-map-demo/pom.xml exec:java "-Dexec.mainClass=com.trionix.maps.samples.AdvancedMapExample"
-    }
-    default {
-        Write-Host "Неверный выбор. Пожалуйста, введите 1, 2 или 3." -ForegroundColor Red
-        exit 1
-    }
-}
+# Now run the demo using the JavaFX plugin configured in the demo module's run-demo profile
+mvn -f trionix-map-demo/pom.xml -Prun-demo javafx:run
