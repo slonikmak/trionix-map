@@ -2,8 +2,10 @@ package com.trionix.maps.samples;
 
 import com.trionix.maps.GeoPoint;
 import com.trionix.maps.MapView;
+import com.trionix.maps.control.ScaleRulerControl;
 import com.trionix.maps.internal.projection.Projection;
 import com.trionix.maps.internal.projection.WebMercatorProjection;
+import com.trionix.maps.layer.GridLayer;
 import com.trionix.maps.layer.PointMarker;
 import com.trionix.maps.layer.PointMarkerLayer;
 import com.trionix.maps.layer.Polyline;
@@ -37,6 +39,8 @@ public final class AdvancedMapExample extends Application {
     private MapView mapView;
     private PointMarkerLayer markerLayer;
     private PolylineLayer polylineLayer;
+    private GridLayer gridLayer;
+    private ScaleRulerControl scaleRuler;
 
     // Data
     private final ObservableList<PointMarker> markers = FXCollections.observableArrayList();
@@ -97,7 +101,9 @@ public final class AdvancedMapExample extends Application {
 
         markerLayer = new PointMarkerLayer();
         polylineLayer = new PolylineLayer();
-        mapView.getLayers().addAll(polylineLayer, markerLayer);
+        gridLayer = new GridLayer();
+        gridLayer.setVisible(false); // Скрыт по умолчанию
+        mapView.getLayers().addAll(polylineLayer, markerLayer, gridLayer);
 
         // Setup UI
         BorderPane root = new BorderPane();
@@ -111,6 +117,15 @@ public final class AdvancedMapExample extends Application {
         StackPane.setMargin(infoLabel, new Insets(10));
         mapContainer.getChildren().add(infoLabel);
         updateInfoLabel();
+
+        // Scale Ruler
+        scaleRuler = new ScaleRulerControl(mapView);
+        scaleRuler.setMaxWidth(Region.USE_PREF_SIZE);
+        scaleRuler.setMaxHeight(Region.USE_PREF_SIZE);
+        scaleRuler.setVisible(false); // Скрыт по умолчанию
+        StackPane.setAlignment(scaleRuler, Pos.BOTTOM_LEFT);
+        StackPane.setMargin(scaleRuler, new Insets(10));
+        mapContainer.getChildren().add(scaleRuler);
 
         // Control Panel
         root.setRight(createControlPanel());
@@ -238,12 +253,30 @@ public final class AdvancedMapExample extends Application {
         lineEditBox.getChildren().addAll(new Label("Свойства линии:"), lineColorPicker, lineEditableCheck, deleteLineBtn);
         lineEditBox.setDisable(true);
 
+        // --- Grid and Ruler Controls ---
+        Label overlaysLabel = new Label("Наложения");
+        overlaysLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14;");
+
+        CheckBox gridVisibleCheck = new CheckBox("Показать сетку координат");
+        gridVisibleCheck.setSelected(gridLayer.isVisible());
+        gridVisibleCheck.setOnAction(e -> gridLayer.setVisible(gridVisibleCheck.isSelected()));
+
+        CheckBox rulerVisibleCheck = new CheckBox("Показать линейку масштаба");
+        rulerVisibleCheck.setSelected(scaleRuler.isVisible());
+        rulerVisibleCheck.setOnAction(e -> scaleRuler.setVisible(rulerVisibleCheck.isSelected()));
+
+        ColorPicker gridColorPicker = new ColorPicker(gridLayer.getStrokeColor());
+        gridColorPicker.setMaxWidth(Double.MAX_VALUE);
+        gridColorPicker.setOnAction(e -> gridLayer.setStrokeColor(gridColorPicker.getValue()));
+
         panel.getChildren().addAll(
                 modesLabel, addMarkerModeBtn, drawLineModeBtn,
                 new Separator(),
                 markersLabel, markerListView, markerEditBox,
                 new Separator(),
-                linesLabel, polylineListView, lineEditBox
+                linesLabel, polylineListView, lineEditBox,
+                new Separator(),
+                overlaysLabel, gridVisibleCheck, rulerVisibleCheck, new Label("Цвет сетки:"), gridColorPicker
         );
         return panel;
     }
