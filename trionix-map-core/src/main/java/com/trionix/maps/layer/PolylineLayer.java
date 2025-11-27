@@ -130,7 +130,11 @@ public final class PolylineLayer extends MapLayer {
                     // But spec separates them.
                     // Let's show markers if markersVisible is true.
                     
-                    markerNode.setVisible(polyline.isMarkersVisible());
+                    // show vertex handles when either markers are requested or the polyline is editable
+                    boolean showHandle = polyline.isMarkersVisible() || polyline.isEditable();
+                    markerNode.setVisible(showHandle);
+                    // allow mouse interactions only when editable so handles don't intercept clicks otherwise
+                    markerNode.setMouseTransparent(!polyline.isEditable());
                     
                     if (markerNode.isVisible()) {
                         double w = markerNode.prefWidth(-1);

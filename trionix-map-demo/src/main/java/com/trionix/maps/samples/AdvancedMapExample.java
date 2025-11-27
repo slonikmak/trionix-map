@@ -1,505 +1,209 @@
 package com.trionix.maps.samples;
 
+import com.trionix.maps.GeoPoint;
 import com.trionix.maps.MapView;
-import com.trionix.maps.layer.PointMarker;
-import com.trionix.maps.layer.PointMarkerLayer;
-import com.trionix.maps.layer.MapLayer;
 import com.trionix.maps.internal.projection.Projection;
 import com.trionix.maps.internal.projection.WebMercatorProjection;
-import javafx.application.Application;
-import javafx.geometry.Insets;
-import javafx.geometry.Pos;
-import javafx.scene.Scene;
-import javafx.scene.control.Button;
-import javafx.scene.control.ToggleButton;
-import javafx.scene.control.CheckBox;
-import javafx.scene.input.MouseButton;
-import javafx.scene.input.MouseEvent;
-import javafx.event.EventHandler;
-import javafx.scene.control.Label;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Region;
-import javafx.scene.layout.StackPane;
-import javafx.scene.layout.VBox;
-import javafx.scene.layout.Priority;
-import javafx.scene.paint.Color;
-import javafx.scene.shape.Circle;
-import com.trionix.maps.GeoPoint;
+import com.trionix.maps.layer.PointMarker;
+import com.trionix.maps.layer.PointMarkerLayer;
 import com.trionix.maps.layer.Polyline;
 import com.trionix.maps.layer.PolylineLayer;
+import javafx.application.Application;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.IdentityHashMap;
 import java.util.Map;
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
-import javafx.scene.control.ListView;
-import javafx.scene.control.ComboBox;
-import javafx.scene.control.ColorPicker;
-import javafx.scene.control.TextField;
 
 /**
- * Продвинутый пример использования {@link MapView} с демонстрацией анимации,
- * множественных слоев и интерактивных элементов.
+ * Переработанный пример с функционалом:
+ * - Маркеры: добавление, перемещение, удаление, редактирование (цвет/текст), список.
+ * - Линии: рисование, редактирование, удаление, список, цвет.
  */
 public final class AdvancedMapExample extends Application {
 
     private MapView mapView;
-    private Label infoLabel;
-
-    // Marker layer and demo UI state
     private PointMarkerLayer markerLayer;
-    // Polyline route layer
     private PolylineLayer polylineLayer;
-    // Drawing state
-    private boolean drawingMode = false;
-    private Polyline currentDraft;
-    private ListView<Polyline> polylineListView;
-    private ColorPicker selectedRouteColorPicker;
-    private Button finishDrawingBtn;
-    private Button cancelDrawingBtn;
-    private final ObservableList<PointMarker> demoMarkers = FXCollections.observableArrayList();
-    private final Map<PointMarker, String> markerNames = new IdentityHashMap<>();
-    private PointMarker selectedDemoMarker;
+
+    // Data
+    private final ObservableList<PointMarker> markers = FXCollections.observableArrayList();
+    private final Map<PointMarker, MarkerData> markerDataMap = new IdentityHashMap<>();
+    // Polyline list is managed by the layer, we use it directly
+
+    // State
+    private PointMarker selectedMarker;
+    private Polyline selectedPolyline;
+    private Polyline currentDrawingPolyline;
+
+    private enum InteractionMode {
+        NONE,
+        ADD_MARKER,
+        DRAW_LINE
+    }
+    private InteractionMode currentMode = InteractionMode.NONE;
+
+    // UI Controls
+    private Label infoLabel;
     private ListView<PointMarker> markerListView;
-    private TextField selectedLatField;
-    private TextField selectedLonField;
-    // Projection helper used by the demo for click->lat/lon conversion
-    private final Projection clickProjection = new WebMercatorProjection();
-    // toggle control exposed to selection logic so UI shows draggable state
-    private ToggleButton draggableToggleBtn;
+    private ListView<Polyline> polylineListView;
+
+    // Marker Edit Controls
+    private VBox markerEditBox;
+    private TextField markerNameField;
+    private ColorPicker markerColorPicker;
+    private Button deleteMarkerBtn;
+
+    // Line Edit Controls
+    private VBox lineEditBox;
+    private ColorPicker lineColorPicker;
+    private CheckBox lineEditableCheck;
+    private Button deleteLineBtn;
+
+    // Toggles
+    private ToggleButton addMarkerModeBtn;
+    private ToggleButton drawLineModeBtn;
+
+    private final Projection projection = new WebMercatorProjection();
+
+    private static class MarkerData {
+        String name;
+        Color color;
+        MarkerData(String name, Color color) {
+            this.name = name;
+            this.color = color;
+        }
+    }
 
     @Override
     public void start(Stage stage) {
-        // Создаем компонент карты
         mapView = new MapView();
         mapView.setPrefSize(1200.0, 800.0);
-        mapView.setCenterLat(55.7558); // Москва
+        mapView.setCenterLat(55.7558);
         mapView.setCenterLon(37.6173);
         mapView.setZoom(10.0);
 
-        // Create info label early so handlers can safely reference it
-        infoLabel = new Label();
-        infoLabel.setStyle("-fx-background-color: rgba(255,255,255,0.9); "
-            + "-fx-padding: 10; -fx-font-size: 14;");
-        updateInfoLabel();
-
-        // Создаем слой с маркерами
         markerLayer = new PointMarkerLayer();
-        PointMarker moscow = markerLayer.addMarker(55.7558, 37.6173, createMarker("Москва", Color.RED));
-        PointMarker spb = markerLayer.addMarker(59.9343, 30.3351, createMarker("Санкт-Петербург", Color.BLUE));
-        PointMarker kazan = markerLayer.addMarker(55.7887, 49.1221, createMarker("Казань", Color.GREEN));
-        // keep a registry used by the demo UI
-        markerNames.put(moscow, "Москва");
-        demoMarkers.add(moscow);
-        markerNames.put(spb, "Санкт-Петербург");
-        demoMarkers.add(spb);
-        markerNames.put(kazan, "Казань");
-        demoMarkers.add(kazan);
-        // Demonstrate interaction: make Moscow marker draggable and clickable
-        moscow.setDraggable(true);
-        moscow.setOnClick(p -> selectDemoMarker(p));
-        moscow.setOnLocationChanged(p -> { if (p == selectedDemoMarker) updateSelectedCoordinatesUI(p); });
-
-        // set onClick for the other markers too so clicking picks them
-        spb.setOnClick(p -> selectDemoMarker(p));
-        spb.setOnLocationChanged(p -> { if (p == selectedDemoMarker) updateSelectedCoordinatesUI(p); });
-        kazan.setOnClick(p -> selectDemoMarker(p));
-        kazan.setOnLocationChanged(p -> { if (p == selectedDemoMarker) updateSelectedCoordinatesUI(p); });
-
-        // Создаем слой с путями (polyline)
-        this.polylineLayer = new PolylineLayer();
-        // example route: Moscow -> St Petersburg
-        Polyline route1 = new Polyline();
-        route1.addPoint(GeoPoint.of(55.7558, 37.6173));
-        route1.addPoint(GeoPoint.of(59.9343, 30.3351));
-        route1.setStrokeColor(Color.PURPLE);
-        route1.setStrokeWidth(3.0);
-        route1.setMarkersVisible(false);
-        polylineLayer.addPolyline(route1);
-
-        // example route: Moscow -> Kazan
-        Polyline route2 = new Polyline();
-        route2.addPoint(GeoPoint.of(55.7558, 37.6173));
-        route2.addPoint(GeoPoint.of(55.7887, 49.1221));
-        route2.setStrokeColor(Color.ORANGE);
-        route2.setStrokeWidth(3.0);
-        route2.setMarkersVisible(false);
-        polylineLayer.addPolyline(route2);
-
-        // Добавляем слои на карту
+        polylineLayer = new PolylineLayer();
         mapView.getLayers().addAll(polylineLayer, markerLayer);
 
-        // Создаем панель управления
-        VBox controlPanel = createControlPanel();
-
-        // Global draw click handler — adds vertices when drawing mode is active
-        mapView.addEventHandler(MouseEvent.MOUSE_CLICKED, ev -> {
-            if (!drawingMode) {
-                return;
-            }
-            // Only respond to primary clicks
-            if (ev.getButton() != MouseButton.PRIMARY || !ev.isStillSincePress()) {
-                return;
-            }
-            // Convert to lat/lon
-            var local = mapView.sceneToLocal(ev.getSceneX(), ev.getSceneY());
-            int zoomLevel = Math.max(0, (int) Math.floor(mapView.getZoom()));
-            Projection.PixelCoordinate centerPixels = clickProjection.latLonToPixel(
-                    mapView.getCenterLat(), mapView.getCenterLon(), zoomLevel);
-            double offsetX = local.getX() - mapView.getWidth() / 2.0;
-            double offsetY = local.getY() - mapView.getHeight() / 2.0;
-            double pixelX = centerPixels.x() + offsetX;
-            double pixelY = centerPixels.y() + offsetY;
-            var latlon = clickProjection.pixelToLatLon(pixelX, pixelY, zoomLevel);
-
-            if (currentDraft == null) {
-                currentDraft = new Polyline();
-                currentDraft.setStrokeColor(selectedRouteColorPicker != null ? selectedRouteColorPicker.getValue() : Color.PURPLE);
-                currentDraft.setStrokeWidth(3.0);
-                currentDraft.setMarkersVisible(true);
-                currentDraft.setEditable(true);
-                polylineLayer.addPolyline(currentDraft);
-                if (polylineListView != null) {
-                    polylineListView.getSelectionModel().select(currentDraft);
-                }
-            }
-
-            currentDraft.addPoint(GeoPoint.of(latlon.latitude(), latlon.longitude()));
-            ev.consume();
-        });
-
-        // Подписываемся на изменения свойств карты
-        mapView.centerLatProperty().addListener((obs, old, newVal) -> updateInfoLabel());
-        mapView.centerLonProperty().addListener((obs, old, newVal) -> updateInfoLabel());
-        mapView.zoomProperty().addListener((obs, old, newVal) -> updateInfoLabel());
-
-        // Размещаем элементы
+        // Setup UI
+        BorderPane root = new BorderPane();
         StackPane mapContainer = new StackPane(mapView);
+        root.setCenter(mapContainer);
+
+        // Info Label
+        infoLabel = new Label();
+        infoLabel.setStyle("-fx-background-color: rgba(255,255,255,0.9); -fx-padding: 10; -fx-font-size: 14;");
         StackPane.setAlignment(infoLabel, Pos.TOP_LEFT);
         StackPane.setMargin(infoLabel, new Insets(10));
         mapContainer.getChildren().add(infoLabel);
+        updateInfoLabel();
 
-        BorderPane root = new BorderPane();
-        root.setCenter(mapContainer);
-        root.setRight(controlPanel);
+        // Control Panel
+        root.setRight(createControlPanel());
 
-        Scene scene = new Scene(root, 1400.0, 800.0);
-        stage.setTitle("Продвинутый пример MapView");
+        // Event Handlers
+        mapView.centerLatProperty().addListener(o -> updateInfoLabel());
+        mapView.centerLonProperty().addListener(o -> updateInfoLabel());
+        mapView.zoomProperty().addListener(o -> updateInfoLabel());
+
+        mapView.addEventHandler(MouseEvent.MOUSE_CLICKED, this::handleMapClick);
+
+        Scene scene = new Scene(root, 1400, 800);
+        stage.setTitle("Редактор Карты");
         stage.setScene(scene);
         stage.show();
     }
 
     private VBox createControlPanel() {
         VBox panel = new VBox(15);
-        panel.setPadding(new Insets(20));
+        panel.setPadding(new Insets(15));
+        panel.setPrefWidth(350);
         panel.setStyle("-fx-background-color: #f5f5f5;");
-        panel.setPrefWidth(420);
 
-        Label title = new Label("Управление картой");
-        title.setStyle("-fx-font-size: 16; -fx-font-weight: bold;");
+        // --- Modes ---
+        Label modesLabel = new Label("Режимы");
+        modesLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14;");
 
+        ToggleGroup modeGroup = new ToggleGroup();
+        addMarkerModeBtn = new ToggleButton("Добавить маркер");
+        addMarkerModeBtn.setToggleGroup(modeGroup);
+        addMarkerModeBtn.setMaxWidth(Double.MAX_VALUE);
 
-        // Кнопки управления масштабом
-        HBox zoomControls = new HBox(10);
-        Button zoomInBtn = new Button("Zoom +");
-        Button zoomOutBtn = new Button("Zoom -");
-        zoomInBtn.setOnAction(e -> mapView.setZoom(mapView.getZoom() + 1));
-        zoomOutBtn.setOnAction(e -> mapView.setZoom(mapView.getZoom() - 1));
-        zoomControls.getChildren().addAll(zoomInBtn, zoomOutBtn);
+        drawLineModeBtn = new ToggleButton("Рисовать линию");
+        drawLineModeBtn.setToggleGroup(modeGroup);
+        drawLineModeBtn.setMaxWidth(Double.MAX_VALUE);
 
-        panel.getChildren().addAll(
-                title,
-                // quick navigation removed — use marker list to move to points
-                new Label("Масштаб:"),
-                zoomControls
-        );
-
-        // --- Marker management UI ------------------------------------------------
-        Label markerTitle = new Label("Маркеры");
-        markerTitle.setStyle("-fx-font-size: 14; -fx-font-weight: bold;");
-
-        TextField nameField = new TextField();
-        nameField.setPromptText("Имя маркера");
-
-        TextField latField = new TextField();
-        latField.setPromptText("Широта (например 55.75)");
-        TextField lonField = new TextField();
-        lonField.setPromptText("Долгота (например 37.62)");
-
-        Button addAtCenterBtn = new Button("Добавить в центр");
-        addAtCenterBtn.setOnAction(e -> {
-            String name = nameField.getText().isBlank() ? "Marker " + (demoMarkers.size() + 1) : nameField.getText();
-            PointMarker m = markerLayer.addMarker(mapView.getCenterLat(), mapView.getCenterLon(), createMarker(name, Color.DARKGRAY));
-            markerNames.put(m, name);
-            demoMarkers.add(m);
-            m.setOnClick(p -> selectDemoMarker(p));
-            m.setOnLocationChanged(p -> { if (p == selectedDemoMarker) updateSelectedCoordinatesUI(p); });
-        });
-
-        Button addAtLatLonBtn = new Button("Добавить по координатам");
-        addAtLatLonBtn.setOnAction(e -> {
-            try {
-                double lat = Double.parseDouble(latField.getText());
-                double lon = Double.parseDouble(lonField.getText());
-                String name = nameField.getText().isBlank() ? String.format("%.4f,%.4f", lat, lon) : nameField.getText();
-                PointMarker m = markerLayer.addMarker(lat, lon, createMarker(name, Color.DARKBLUE));
-                markerNames.put(m, name);
-                demoMarkers.add(m);
-                m.setOnClick(p -> selectDemoMarker(p));
-                m.setOnLocationChanged(p -> { if (p == selectedDemoMarker) updateSelectedCoordinatesUI(p); });
-            } catch (NumberFormatException ex) {
-                infoLabel.setText("Ошибка: неверные координаты");
+        modeGroup.selectedToggleProperty().addListener((obs, old, newToggle) -> {
+            if (newToggle == addMarkerModeBtn) {
+                currentMode = InteractionMode.ADD_MARKER;
+                finishDrawing();
+            } else if (newToggle == drawLineModeBtn) {
+                currentMode = InteractionMode.DRAW_LINE;
+                startDrawing();
+            } else {
+                currentMode = InteractionMode.NONE;
+                finishDrawing();
             }
         });
 
-        markerListView = new ListView<>(demoMarkers);
-        ListView<PointMarker> listView = markerListView;
-        listView.setMaxHeight(180);
-        listView.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+        // --- Markers ---
+        Label markersLabel = new Label("Маркеры");
+        markersLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14;");
+
+        markerListView = new ListView<>(markers);
+        markerListView.setPrefHeight(150);
+        markerListView.setCellFactory(lv -> new ListCell<>() {
             @Override
             protected void updateItem(PointMarker item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty || item == null) {
                     setText(null);
                 } else {
-                    setText(markerNames.getOrDefault(item, "marker"));
+                    MarkerData data = markerDataMap.get(item);
+                    setText(data != null ? data.name : "Marker");
                 }
             }
         });
-        listView.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> {
-            selectDemoMarker(sel);
-            if (sel != null) {
-                // center the map to the selected marker (keep current zoom)
-                mapView.flyTo(sel.getLatitude(), sel.getLongitude(), mapView.getZoom(), Duration.seconds(0.6));
-            }
-        });
+        markerListView.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> selectMarker(sel));
 
-        Button deleteBtn = new Button("Удалить");
-        deleteBtn.setOnAction(e -> {
-            PointMarker sel = listView.getSelectionModel().getSelectedItem();
-            if (sel != null) {
-                markerLayer.removeMarker(sel);
-                demoMarkers.remove(sel);
-                markerNames.remove(sel);
-                if (sel == selectedDemoMarker) {
-                    selectDemoMarker(null);
-                }
-            }
-        });
+        // Marker Edit
+        markerEditBox = new VBox(8);
+        markerNameField = new TextField();
+        markerNameField.setPromptText("Название");
+        markerNameField.setOnAction(e -> updateSelectedMarker());
 
-        Button moveToCenterBtn = new Button("Переместить в центр");
-        moveToCenterBtn.setOnAction(e -> {
-            PointMarker sel = listView.getSelectionModel().getSelectedItem();
-            if (sel != null) {
-                sel.setLocation(mapView.getCenterLat(), mapView.getCenterLon());
-            }
-        });
+        markerColorPicker = new ColorPicker();
+        markerColorPicker.setMaxWidth(Double.MAX_VALUE);
+        markerColorPicker.setOnAction(e -> updateSelectedMarker());
 
-        draggableToggleBtn = new ToggleButton("Режим перетаскивания");
-        draggableToggleBtn.setMaxWidth(Double.MAX_VALUE);
-        draggableToggleBtn.setOnAction(e -> {
-            PointMarker sel = listView.getSelectionModel().getSelectedItem();
-            if (sel != null) {
-                boolean enabled = draggableToggleBtn.isSelected();
-                sel.setDraggable(enabled);
-            }
-        });
+        deleteMarkerBtn = new Button("Удалить маркер");
+        deleteMarkerBtn.setMaxWidth(Double.MAX_VALUE);
+        deleteMarkerBtn.setOnAction(e -> deleteSelectedMarker());
 
-        CheckBox addOnClick = new CheckBox("Добавлять маркер по клику");
-        EventHandler<MouseEvent> clickHandler = ev -> {
-            if (ev.getButton() != MouseButton.PRIMARY || !ev.isStillSincePress()) {
-                return;
-            }
-            // do not add point markers while the user is drawing a route
-            if (drawingMode) {
-                return;
-            }
-            var local = mapView.sceneToLocal(ev.getSceneX(), ev.getSceneY());
-            int zoomLevel = Math.max(0, (int) Math.floor(mapView.getZoom()));
-            Projection.PixelCoordinate centerPixels = clickProjection.latLonToPixel(
-                    mapView.getCenterLat(), mapView.getCenterLon(), zoomLevel);
-            double offsetX = local.getX() - mapView.getWidth() / 2.0;
-            double offsetY = local.getY() - mapView.getHeight() / 2.0;
-            double pixelX = centerPixels.x() + offsetX;
-            double pixelY = centerPixels.y() + offsetY;
-            var latlon = clickProjection.pixelToLatLon(pixelX, pixelY, zoomLevel);
-            String name = nameField.getText().isBlank() ? String.format("%.4f,%.4f", latlon.latitude(), latlon.longitude()) : nameField.getText();
-            PointMarker m = markerLayer.addMarker(latlon.latitude(), latlon.longitude(), createMarker(name, Color.CORAL));
-            markerNames.put(m, name);
-            demoMarkers.add(m);
-            m.setOnClick(p -> selectDemoMarker(p));
-            m.setOnLocationChanged(p -> { if (p == selectedDemoMarker) updateSelectedCoordinatesUI(p); });
-        };
+        markerEditBox.getChildren().addAll(new Label("Свойства маркера:"), markerNameField, markerColorPicker, deleteMarkerBtn);
+        markerEditBox.setDisable(true);
 
-        // attach/detach the click handler when checkbox toggles
-        addOnClick.selectedProperty().addListener((obs, old, nw) -> {
-            if (nw) {
-                mapView.addEventHandler(MouseEvent.MOUSE_CLICKED, clickHandler);
-            } else {
-                mapView.removeEventHandler(MouseEvent.MOUSE_CLICKED, clickHandler);
-            }
-        });
-
-        // create readonly fields to display the coordinates of the selected marker
-        selectedLatField = new TextField();
-        selectedLatField.setEditable(false);
-        selectedLatField.setPromptText("Широта");
-        selectedLonField = new TextField();
-        selectedLonField.setEditable(false);
-        selectedLonField.setPromptText("Долгота");
-
-        panel.getChildren().addAll(
-                new Label(""),
-                markerTitle,
-                nameField,
-                new HBox(8, latField, lonField),
-                new HBox(8, addAtCenterBtn, addAtLatLonBtn),
-                listView,
-            new HBox(8, deleteBtn, moveToCenterBtn),
-            new Label("Координаты выделенного маркера:"),
-            new HBox(8, selectedLatField, selectedLonField)
-        );
-
-            HBox toggleRow = new HBox(8, draggableToggleBtn);
-            HBox.setHgrow(draggableToggleBtn, Priority.ALWAYS);
-            panel.getChildren().add(toggleRow);
-
-            // finally add the click toggle control at the bottom
-            panel.getChildren().add(addOnClick);
-
-        // --- Routes management UI ------------------------------------------------
-        Label routesTitle = new Label("Пути");
-        routesTitle.setStyle("-fx-font-size: 14; -fx-font-weight: bold;");
-
-        ComboBox<PointMarker> startSelector = new ComboBox<>(demoMarkers);
-        ComboBox<PointMarker> endSelector = new ComboBox<>(demoMarkers);
-        startSelector.setPromptText("Источник (маркер)");
-        endSelector.setPromptText("Приёмник (маркер)");
-        // render nice names in the combo boxes
-        startSelector.setCellFactory(cb -> new javafx.scene.control.ListCell<>() {
-            @Override
-            protected void updateItem(PointMarker item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null ? null : markerNames.getOrDefault(item, "marker"));
-            }
-        });
-        startSelector.setButtonCell(new javafx.scene.control.ListCell<>() {
-            @Override
-            protected void updateItem(PointMarker item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null ? null : markerNames.getOrDefault(item, "marker"));
-            }
-        });
-        endSelector.setCellFactory(startSelector.getCellFactory());
-        endSelector.setButtonCell(startSelector.getButtonCell());
-
-        ColorPicker colorPicker = new ColorPicker(Color.PURPLE);
-
-        Button createRouteBtn = new Button("Создать путь между маркерами");
-        createRouteBtn.setOnAction(e -> {
-            PointMarker a = startSelector.getValue();
-            PointMarker b = endSelector.getValue();
-            if (a == null || b == null) {
-                infoLabel.setText("Выберите источник и приёмник маркеров для создания пути");
-                return;
-            }
-            Polyline route = new Polyline();
-            route.addPoint(GeoPoint.of(a.getLatitude(), a.getLongitude()));
-            route.addPoint(GeoPoint.of(b.getLatitude(), b.getLongitude()));
-            route.setStrokeColor(colorPicker.getValue());
-            route.setStrokeWidth(3.0);
-            route.setMarkersVisible(true);
-            // keep routes editable by default so demo user can drag vertices
-            route.setEditable(true);
-            polylineLayer.addPolyline(route);
-            infoLabel.setText("Путь создан: " + markerNames.getOrDefault(a, "a") + " → " + markerNames.getOrDefault(b, "b"));
-        });
-
-        CheckBox showVertexMarkers = new CheckBox("Показывать маркеры вершин");
-        showVertexMarkers.setOnAction(e -> {
-            boolean show = showVertexMarkers.isSelected();
-            polylineLayer.getPolylines().forEach(p -> p.setMarkersVisible(show));
-            polylineLayer.requestLayerLayout();
-        });
-
-        CheckBox enableEditing = new CheckBox("Редактируемые вершины");
-        enableEditing.setOnAction(e -> {
-            boolean editable = enableEditing.isSelected();
-            polylineLayer.getPolylines().forEach(p -> p.setEditable(editable));
-            polylineLayer.requestLayerLayout();
-        });
-
-        Button clearRoutesBtn = new Button("Очистить все пути");
-        clearRoutesBtn.setOnAction(e -> {
-            polylineLayer.getPolylines().clear();
-        });
-
-        // Drawing controls: toggle + finish/cancel
-        ToggleButton drawToggle = new ToggleButton("Режим рисования");
-        finishDrawingBtn = new Button("Завершить путь");
-        cancelDrawingBtn = new Button("Отменить");
-        finishDrawingBtn.setDisable(true);
-        cancelDrawingBtn.setDisable(true);
-
-        drawToggle.setOnAction(e -> {
-            drawingMode = drawToggle.isSelected();
-            finishDrawingBtn.setDisable(!drawingMode);
-            cancelDrawingBtn.setDisable(!drawingMode);
-            if (!drawingMode) {
-                // leaving draw mode — keep draft if present
-            } else {
-                // entering draw mode — start fresh
-                currentDraft = null;
-            }
-        });
-
-        finishDrawingBtn.setOnAction(e -> {
-            drawingMode = false;
-            drawToggle.setSelected(false);
-            finishDrawingBtn.setDisable(true);
-            cancelDrawingBtn.setDisable(true);
-            if (currentDraft != null && currentDraft.getPoints().size() < 2) {
-                polylineLayer.getPolylines().remove(currentDraft);
-            }
-            currentDraft = null;
-        });
-
-        cancelDrawingBtn.setOnAction(e -> {
-            drawingMode = false;
-            drawToggle.setSelected(false);
-            finishDrawingBtn.setDisable(true);
-            cancelDrawingBtn.setDisable(true);
-            if (currentDraft != null) {
-                polylineLayer.getPolylines().remove(currentDraft);
-            }
-            currentDraft = null;
-        });
-
-        VBox routeControls = new VBox(8,
-                routesTitle,
-                new HBox(8, startSelector, endSelector),
-                new HBox(8, new Label("Цвет:"), colorPicker),
-                createRouteBtn,
-                showVertexMarkers,
-                enableEditing,
-                clearRoutesBtn
-        );
-        routeControls.setPadding(new Insets(8, 0, 0, 0));
-        routeControls.getChildren().add(new HBox(8, drawToggle, finishDrawingBtn, cancelDrawingBtn));
-        panel.getChildren().add(routeControls);
-
-        // Polylines list with per-route controls
-        Label existingRoutesTitle = new Label("Существующие пути");
-        existingRoutesTitle.setStyle("-fx-font-size: 12; -fx-font-weight: bold;");
+        // --- Lines ---
+        Label linesLabel = new Label("Линии");
+        linesLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14;");
 
         polylineListView = new ListView<>(polylineLayer.getPolylines());
-        polylineListView.setPrefHeight(120);
-        polylineListView.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+        polylineListView.setPrefHeight(150);
+        polylineListView.setCellFactory(lv -> new ListCell<>() {
             @Override
             protected void updateItem(Polyline item, boolean empty) {
                 super.updateItem(item, empty);
@@ -507,147 +211,214 @@ public final class AdvancedMapExample extends Application {
                     setText(null);
                     setGraphic(null);
                 } else {
-                    int idx = getIndex() + 1;
-                    setText("Путь " + idx + " (" + item.getPoints().size() + " точек)");
-                    javafx.scene.shape.Rectangle swatch = new javafx.scene.shape.Rectangle(16, 12, item.getStrokeColor());
-                    swatch.setStroke(Color.BLACK);
-                    setGraphic(swatch);
+                    setText("Линия " + (getIndex() + 1) + " (" + item.getPoints().size() + " точек)");
+                    javafx.scene.shape.Rectangle r = new javafx.scene.shape.Rectangle(16, 10, item.getStrokeColor());
+                    r.setStroke(Color.BLACK);
+                    setGraphic(r);
                 }
             }
         });
+        polylineListView.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> selectPolyline(sel));
 
-        selectedRouteColorPicker = new ColorPicker(Color.PURPLE);
-        Button applyColorBtn = new Button("Применить цвет");
-        Button removeRouteBtn = new Button("Удалить путь");
+        // Line Edit
+        lineEditBox = new VBox(8);
+        lineColorPicker = new ColorPicker();
+        lineColorPicker.setMaxWidth(Double.MAX_VALUE);
+        lineColorPicker.setOnAction(e -> updateSelectedLine());
 
-        applyColorBtn.setOnAction(e -> {
-            Polyline sel = polylineListView.getSelectionModel().getSelectedItem();
-            if (sel != null) {
-                sel.setStrokeColor(selectedRouteColorPicker.getValue());
-                polylineLayer.requestLayerLayout();
-            }
+        lineEditableCheck = new CheckBox("Редактируемая");
+        lineEditableCheck.setOnAction(e -> {
+            if (selectedPolyline != null) selectedPolyline.setEditable(lineEditableCheck.isSelected());
         });
 
-        removeRouteBtn.setOnAction(e -> {
-            Polyline sel = polylineListView.getSelectionModel().getSelectedItem();
-            if (sel != null) {
-                polylineLayer.getPolylines().remove(sel);
-            }
-        });
+        deleteLineBtn = new Button("Удалить линию");
+        deleteLineBtn.setMaxWidth(Double.MAX_VALUE);
+        deleteLineBtn.setOnAction(e -> deleteSelectedLine());
 
-        // update color picker when selection changes
-        polylineListView.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> {
-            if (sel == null) {
-                selectedRouteColorPicker.setDisable(true);
-                applyColorBtn.setDisable(true);
-                removeRouteBtn.setDisable(true);
-            } else {
-                selectedRouteColorPicker.setDisable(false);
-                applyColorBtn.setDisable(false);
-                removeRouteBtn.setDisable(false);
-                selectedRouteColorPicker.setValue(sel.getStrokeColor());
-            }
-        });
+        lineEditBox.getChildren().addAll(new Label("Свойства линии:"), lineColorPicker, lineEditableCheck, deleteLineBtn);
+        lineEditBox.setDisable(true);
 
-        HBox perRouteRow = new HBox(8, selectedRouteColorPicker, applyColorBtn, removeRouteBtn);
-        perRouteRow.setPadding(new Insets(6, 0, 0, 0));
-
-        panel.getChildren().addAll(new Label(""), existingRoutesTitle, polylineListView, perRouteRow);
-
+        panel.getChildren().addAll(
+                modesLabel, addMarkerModeBtn, drawLineModeBtn,
+                new Separator(),
+                markersLabel, markerListView, markerEditBox,
+                new Separator(),
+                linesLabel, polylineListView, lineEditBox
+        );
         return panel;
     }
 
-    // Navigation helper removed — movement now happens by selecting markers in the list
+    private void handleMapClick(MouseEvent ev) {
+        if (ev.getButton() != MouseButton.PRIMARY || !ev.isStillSincePress()) return;
 
-    private void updateInfoLabel() {
-        String info = String.format(
-                "Широта: %.4f°\nДолгота: %.4f°\nМасштаб: %.2f",
-                mapView.getCenterLat(),
-                mapView.getCenterLon(),
-                mapView.getZoom()
-        );
-        infoLabel.setText(info);
+        // Check if we clicked on a marker (if so, don't add another one)
+        // But here we are on the MapView level. If the marker consumed the event, we wouldn't be here?
+        // Actually, let's rely on the mode.
+
+        GeoPoint loc = getClickLocation(ev);
+
+        if (currentMode == InteractionMode.ADD_MARKER) {
+            addMarker(loc.latitude(), loc.longitude(), "Маркер " + (markers.size() + 1), Color.RED);
+        } else if (currentMode == InteractionMode.DRAW_LINE) {
+            if (currentDrawingPolyline != null) {
+                currentDrawingPolyline.addPoint(loc);
+                // Refresh list to show point count update
+                polylineListView.refresh();
+            }
+        }
     }
 
-    private Region createMarker(String label, Color color) {
-        StackPane marker = new StackPane();
+    private GeoPoint getClickLocation(MouseEvent ev) {
+        var local = mapView.sceneToLocal(ev.getSceneX(), ev.getSceneY());
+        int zoom = (int) Math.floor(mapView.getZoom());
+        var centerPx = projection.latLonToPixel(mapView.getCenterLat(), mapView.getCenterLon(), zoom);
+        double dx = local.getX() - mapView.getWidth() / 2.0;
+        double dy = local.getY() - mapView.getHeight() / 2.0;
+        var latLon = projection.pixelToLatLon(centerPx.x() + dx, centerPx.y() + dy, zoom);
+        return GeoPoint.of(latLon.latitude(), latLon.longitude());
+    }
 
-        // Создаем круг для маркера
-        Circle circle = new Circle(12);
-        circle.setFill(color);
-        circle.setStroke(Color.WHITE);
-        circle.setStrokeWidth(2);
+    private void addMarker(double lat, double lon, String name, Color color) {
+        Node node = createMarkerNode(name, color);
+        PointMarker marker = markerLayer.addMarker(lat, lon, node);
+        marker.setDraggable(true);
+        markerDataMap.put(marker, new MarkerData(name, color));
+        markers.add(marker);
 
-        // Создаем подпись
-        Label labelNode = new Label(label);
-        labelNode.setStyle(String.format(
-                "-fx-background-color: rgba(%d,%d,%d,0.95); "
-                        + "-fx-text-fill: white; "
-                        + "-fx-padding: 4 8 4 8; "
-                        + "-fx-background-radius: 10; "
-                        + "-fx-font-size: 12; "
-                        + "-fx-font-weight: bold;",
-                (int) (color.getRed() * 255),
-                (int) (color.getGreen() * 255),
-                (int) (color.getBlue() * 255)
-        ));
+        marker.setOnClick(m -> {
+            markerListView.getSelectionModel().select(m);
+            // Note: we don't consume the event here explicitly, but usually the layer handles it.
+        });
+        
+        // Select the new marker
+        markerListView.getSelectionModel().select(marker);
+    }
 
-        VBox content = new VBox(5);
-        content.setAlignment(Pos.CENTER);
-        content.getChildren().addAll(labelNode, circle);
+    private Node createMarkerNode(String name, Color color) {
+        VBox box = new VBox(2);
+        box.setAlignment(Pos.CENTER);
+        // Label at index 0
+        Label l = new Label(name);
+        l.setStyle("-fx-background-color: rgba(255,255,255,0.9); -fx-padding: 2px 4px; -fx-font-size: 11px; -fx-background-radius: 4; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.4), 2, 0, 0, 1);");
+        
+        // Circle at index 1
+        Circle c = new Circle(8, color);
+        c.setStroke(Color.WHITE);
+        c.setStrokeWidth(2);
+        c.setEffect(new javafx.scene.effect.DropShadow(3, Color.gray(0.5)));
+        
+        box.getChildren().addAll(l, c);
+        return box;
+    }
 
-        marker.getChildren().add(content);
-        return marker;
+    private void selectMarker(PointMarker marker) {
+        selectedMarker = marker;
+        boolean hasSelection = (marker != null);
+
+        markerEditBox.setDisable(!hasSelection);
+
+        if (hasSelection) {
+            MarkerData data = markerDataMap.get(marker);
+            if (data != null) {
+                markerNameField.setText(data.name);
+                markerColorPicker.setValue(data.color);
+            }
+
+            // Center map
+            mapView.flyTo(marker.getLatitude(), marker.getLongitude(), mapView.getZoom(), Duration.seconds(0.5));
+            
+            // Highlight visual (optional, could add a border to the node)
+        }
+    }
+
+    private void updateSelectedMarker() {
+        if (selectedMarker == null) return;
+        String name = markerNameField.getText();
+        Color color = markerColorPicker.getValue();
+
+        MarkerData data = markerDataMap.get(selectedMarker);
+        if (data != null) {
+            data.name = name;
+            data.color = color;
+        }
+
+        // Update visual
+        VBox node = (VBox) selectedMarker.getNode();
+        if (node.getChildren().size() >= 2) {
+            Label l = (Label) node.getChildren().get(0);
+            l.setText(name);
+            Circle c = (Circle) node.getChildren().get(1);
+            c.setFill(color);
+        }
+
+        markerListView.refresh();
+    }
+
+    private void deleteSelectedMarker() {
+        if (selectedMarker != null) {
+            markerLayer.removeMarker(selectedMarker);
+            markers.remove(selectedMarker);
+            markerDataMap.remove(selectedMarker);
+            markerListView.getSelectionModel().clearSelection();
+        }
+    }
+
+    // ... Line methods ...
+    private void startDrawing() {
+        currentDrawingPolyline = new Polyline();
+        currentDrawingPolyline.setStrokeColor(Color.BLUE);
+        currentDrawingPolyline.setStrokeWidth(4);
+        currentDrawingPolyline.setEditable(true);
+        polylineLayer.addPolyline(currentDrawingPolyline);
+        // polylineLayer.getPolylines() is observable, so list view updates automatically
+        polylineListView.getSelectionModel().select(currentDrawingPolyline);
+    }
+
+    private void finishDrawing() {
+        if (currentDrawingPolyline != null) {
+            // If line has < 2 points, maybe remove it?
+            if (currentDrawingPolyline.getPoints().size() < 2) {
+                polylineLayer.removePolyline(currentDrawingPolyline);
+            }
+            currentDrawingPolyline = null;
+        }
+    }
+
+    private void selectPolyline(Polyline polyline) {
+        selectedPolyline = polyline;
+        boolean hasSelection = (polyline != null);
+        lineEditBox.setDisable(!hasSelection);
+
+        if (hasSelection) {
+            lineColorPicker.setValue(polyline.getStrokeColor());
+            lineEditableCheck.setSelected(polyline.isEditable());
+        }
+    }
+
+    private void updateSelectedLine() {
+        if (selectedPolyline != null) {
+            selectedPolyline.setStrokeColor(lineColorPicker.getValue());
+            polylineLayer.requestLayerLayout();
+            polylineListView.refresh();
+        }
+    }
+
+    private void deleteSelectedLine() {
+        if (selectedPolyline != null) {
+            polylineLayer.removePolyline(selectedPolyline);
+            polylineListView.getSelectionModel().clearSelection();
+            if (selectedPolyline == currentDrawingPolyline) {
+                currentDrawingPolyline = null;
+            }
+        }
+    }
+
+    private void updateInfoLabel() {
+        infoLabel.setText(String.format("Широта: %.4f  Долгота: %.4f  Масштаб: %.2f",
+                mapView.getCenterLat(), mapView.getCenterLon(), mapView.getZoom()));
     }
 
     public static void main(String[] args) {
         launch(args);
     }
-
-    private void selectDemoMarker(PointMarker marker) {
-        // clear previous highlight
-        if (selectedDemoMarker != null && selectedDemoMarker.getNode() != null) {
-            selectedDemoMarker.getNode().setStyle("");
-        }
-        selectedDemoMarker = marker;
-        // reflect selection in the list view
-        if (markerListView != null) {
-            if (marker == null) {
-                markerListView.getSelectionModel().clearSelection();
-            } else {
-                markerListView.getSelectionModel().select(marker);
-                markerListView.scrollTo(marker);
-            }
-        }
-        if (marker != null && marker.getNode() != null) {
-            marker.getNode().setStyle("-fx-border-color: #FFD54F; -fx-border-width: 2; -fx-padding: 2;");
-            infoLabel.setText("Selected: " + markerNames.getOrDefault(marker, String.format("%.4f,%.4f", marker.getLatitude(), marker.getLongitude())));
-            updateSelectedCoordinatesUI(marker);
-            if (draggableToggleBtn != null) {
-                draggableToggleBtn.setSelected(marker.isDraggable());
-            }
-        }
-        else {
-            if (draggableToggleBtn != null) {
-                draggableToggleBtn.setSelected(false);
-            }
-            // clear coordinate display
-            if (selectedLatField != null) selectedLatField.setText("");
-            if (selectedLonField != null) selectedLonField.setText("");
-        }
-    }
-
-    private void updateSelectedCoordinatesUI(PointMarker marker) {
-        if (marker == null) return;
-        if (selectedLatField != null) {
-            selectedLatField.setText(String.format("%.6f", marker.getLatitude()));
-        }
-        if (selectedLonField != null) {
-            selectedLonField.setText(String.format("%.6f", marker.getLongitude()));
-        }
-    }
-
-    // Using library PointMarkerLayer in place of demo's MarkerLayer; interaction enabled above
-
-    
 }
