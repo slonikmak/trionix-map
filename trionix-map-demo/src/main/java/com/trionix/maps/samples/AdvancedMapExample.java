@@ -143,11 +143,13 @@ public final class AdvancedMapExample extends Application {
         stage.show();
     }
 
-    private VBox createControlPanel() {
-        VBox panel = new VBox(15);
-        panel.setPadding(new Insets(15));
-        panel.setPrefWidth(350);
-        panel.setStyle("-fx-background-color: #f5f5f5;");
+    private Node createControlPanel() {
+        // Compact right-hand control column. Put content into a ScrollPane so it scrolls when taller than window.
+        VBox panel = new VBox(8);
+        panel.setPadding(new Insets(10));
+        panel.setPrefWidth(300);
+        // Ensure the panel text is black so items are readable on the light background
+        panel.setStyle("-fx-background-color: #f5f5f5; -fx-text-fill: black; -fx-font-size: 12px;");
 
         // --- Modes ---
         Label modesLabel = new Label("Режимы");
@@ -157,10 +159,12 @@ public final class AdvancedMapExample extends Application {
         addMarkerModeBtn = new ToggleButton("Добавить маркер");
         addMarkerModeBtn.setToggleGroup(modeGroup);
         addMarkerModeBtn.setMaxWidth(Double.MAX_VALUE);
+        addMarkerModeBtn.setStyle("-fx-text-fill: black;");
 
         drawLineModeBtn = new ToggleButton("Рисовать линию");
         drawLineModeBtn.setToggleGroup(modeGroup);
         drawLineModeBtn.setMaxWidth(Double.MAX_VALUE);
+        drawLineModeBtn.setStyle("-fx-text-fill: black;");
 
         modeGroup.selectedToggleProperty().addListener((obs, old, newToggle) -> {
             if (newToggle == addMarkerModeBtn) {
@@ -180,11 +184,13 @@ public final class AdvancedMapExample extends Application {
         markersLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14;");
 
         markerListView = new ListView<>(markers);
-        markerListView.setPrefHeight(150);
+        markerListView.setPrefHeight(110);
+        markerListView.setMaxWidth(Double.MAX_VALUE);
         markerListView.setCellFactory(lv -> new ListCell<>() {
             @Override
             protected void updateItem(PointMarker item, boolean empty) {
                 super.updateItem(item, empty);
+                setStyle("-fx-text-fill: black;");
                 if (empty || item == null) {
                     setText(null);
                 } else {
@@ -198,8 +204,10 @@ public final class AdvancedMapExample extends Application {
         // Marker Edit
         markerEditBox = new VBox(8);
         markerNameField = new TextField();
+        markerNameField.setMaxWidth(Double.MAX_VALUE);
         markerNameField.setPromptText("Название");
         markerNameField.setOnAction(e -> updateSelectedMarker());
+        markerNameField.setStyle("-fx-text-inner-color: black; -fx-text-fill: black;");
 
         markerColorPicker = new ColorPicker();
         markerColorPicker.setMaxWidth(Double.MAX_VALUE);
@@ -208,6 +216,7 @@ public final class AdvancedMapExample extends Application {
         deleteMarkerBtn = new Button("Удалить маркер");
         deleteMarkerBtn.setMaxWidth(Double.MAX_VALUE);
         deleteMarkerBtn.setOnAction(e -> deleteSelectedMarker());
+        deleteMarkerBtn.setStyle("-fx-text-fill: black;");
 
         markerEditBox.getChildren().addAll(new Label("Свойства маркера:"), markerNameField, markerColorPicker, deleteMarkerBtn);
         markerEditBox.setDisable(true);
@@ -217,11 +226,13 @@ public final class AdvancedMapExample extends Application {
         linesLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14;");
 
         polylineListView = new ListView<>(polylineLayer.getPolylines());
-        polylineListView.setPrefHeight(150);
+        polylineListView.setPrefHeight(110);
+        polylineListView.setMaxWidth(Double.MAX_VALUE);
         polylineListView.setCellFactory(lv -> new ListCell<>() {
             @Override
             protected void updateItem(Polyline item, boolean empty) {
                 super.updateItem(item, empty);
+            setStyle("-fx-text-fill: black;");
                 if (empty || item == null) {
                     setText(null);
                     setGraphic(null);
@@ -249,6 +260,7 @@ public final class AdvancedMapExample extends Application {
         deleteLineBtn = new Button("Удалить линию");
         deleteLineBtn.setMaxWidth(Double.MAX_VALUE);
         deleteLineBtn.setOnAction(e -> deleteSelectedLine());
+        deleteLineBtn.setStyle("-fx-text-fill: black;");
 
         lineEditBox.getChildren().addAll(new Label("Свойства линии:"), lineColorPicker, lineEditableCheck, deleteLineBtn);
         lineEditBox.setDisable(true);
@@ -269,16 +281,39 @@ public final class AdvancedMapExample extends Application {
         gridColorPicker.setMaxWidth(Double.MAX_VALUE);
         gridColorPicker.setOnAction(e -> gridLayer.setStrokeColor(gridColorPicker.getValue()));
 
+        // Ensure checkboxes and label text are black for all themes
+        gridVisibleCheck.setStyle("-fx-text-fill: black;");
+        rulerVisibleCheck.setStyle("-fx-text-fill: black;");
+
         panel.getChildren().addAll(
-                modesLabel, addMarkerModeBtn, drawLineModeBtn,
-                new Separator(),
-                markersLabel, markerListView, markerEditBox,
-                new Separator(),
-                linesLabel, polylineListView, lineEditBox,
-                new Separator(),
-                overlaysLabel, gridVisibleCheck, rulerVisibleCheck, new Label("Цвет сетки:"), gridColorPicker
+            modesLabel,
+            addMarkerModeBtn,
+            drawLineModeBtn,
+            new Separator(),
+            markersLabel,
+            markerListView,
+            markerEditBox,
+            new Separator(),
+            linesLabel,
+            polylineListView,
+            lineEditBox,
+            new Separator(),
+            overlaysLabel,
+            gridVisibleCheck,
+            rulerVisibleCheck,
+            new Label("Цвет сетки:"),
+            gridColorPicker
         );
-        return panel;
+
+        // Make the column scrollable when content is taller than available window height
+        ScrollPane scroll = new ScrollPane(panel);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        scroll.setPrefWidth(panel.getPrefWidth());
+        scroll.setStyle("-fx-background: transparent; -fx-background-color: transparent;");
+
+        return scroll;
     }
 
     private void handleMapClick(MouseEvent ev) {
