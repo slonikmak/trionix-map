@@ -99,6 +99,8 @@ public final class AdvancedMapExample extends Application {
         mapView.setCenterLon(37.6173);
         mapView.setZoom(10.0);
 
+        // Note: input zooms are instantaneous in the current runtime (no in-flight zoom animations)
+
         markerLayer = new PointMarkerLayer();
         polylineLayer = new PolylineLayer();
         gridLayer = new GridLayer();

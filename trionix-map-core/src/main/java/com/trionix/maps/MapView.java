@@ -23,12 +23,15 @@ import java.util.function.DoubleUnaryOperator;
 import javafx.application.Platform;
 import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.DoublePropertyBase;
+import javafx.beans.property.SimpleDoubleProperty;
+import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.image.Image;
+import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
 import javafx.scene.input.ZoomEvent;
@@ -49,6 +52,7 @@ public final class MapView extends Region {
     private static final double PREF_SIZE = 512.0;
     private static final Image PLACEHOLDER = PlaceholderTileFactory.placeholder();
     private static final double SCROLL_ZOOM_STEP = 0.5;
+    private static final double DOUBLE_CLICK_ZOOM_DELTA = 1.0;
 
         private final DoubleProperty centerLat = createNormalizedProperty(
             "centerLat", v -> clampLatitude(v), 0.0);
@@ -57,6 +61,9 @@ public final class MapView extends Region {
         private final DoubleProperty zoom = createNormalizedProperty(
             "zoom", v -> clampZoom(v, MapState.DEFAULT_MIN_ZOOM, MapState.DEFAULT_MAX_ZOOM), 1.0);
 
+    private final MapAnimationConfig animationConfig = new MapAnimationConfig();
+    private boolean enableDoubleClickZoom = true;
+
     private final MapState mapState = new MapState();
     private final TileManager tileManager;
     private final Projection projection = new WebMercatorProjection();
@@ -64,7 +71,12 @@ public final class MapView extends Region {
     private final Pane layerPane = new Pane();
     private final GraphicsContext graphics = tileCanvas.getGraphicsContext2D();
     private final ObservableList<MapLayer> layers = FXCollections.observableArrayList();
-    private Timeline flyToTimeline;
+    private Timeline navigationTimeline;
+    private Runnable activeAnimationCleanup;
+
+    private double lastPinchZoomDelta;
+    private double lastPinchPivotX;
+    private double lastPinchPivotY;
 
     private List<TileCoordinate> currentVisibleTiles = List.of();
     private boolean refreshPending;
@@ -176,6 +188,32 @@ public final class MapView extends Region {
     }
 
     /**
+     * Returns whether double-click zoom is enabled.
+     */
+    public boolean isEnableDoubleClickZoom() {
+        return enableDoubleClickZoom;
+    }
+
+    /**
+     * Enables or disables double-click zoom functionality. When enabled (default), double-clicking
+     * the primary mouse button zooms in by one level around the cursor position.
+     *
+     * @param enable {@code true} to enable double-click zoom, {@code false} to disable
+     */
+    public void setEnableDoubleClickZoom(boolean enable) {
+        this.enableDoubleClickZoom = enable;
+    }
+
+    /**
+     * Returns the animation configuration responsible for scroll, double-click, touch, and fly-to
+     * transitions. Changes take effect immediately and allow callers to customize durations,
+     * easing, or disable animations entirely.
+     */
+    public MapAnimationConfig getAnimationConfig() {
+        return animationConfig;
+    }
+
+    /**
      * Smoothly animates the viewport to the provided center and zoom using a JavaFX
      * {@link Timeline}. A zero or negative duration jumps immediately. This method accepts calls
      * from any thread and will marshal to the JavaFX Application Thread automatically.
@@ -193,7 +231,11 @@ public final class MapView extends Region {
         double targetLat = clampLatitude(latitude);
         double targetLon = normalizeLongitude(longitude);
         double targetZoom = clampZoom(zoomLevel, MapState.DEFAULT_MIN_ZOOM, MapState.DEFAULT_MAX_ZOOM);
-        Runnable action = () -> beginFlyToAnimation(targetLat, targetLon, targetZoom, duration);
+        Duration effectiveDuration = (!animationConfig.isAnimationsEnabled()
+                || !animationConfig.isFlyToAnimationEnabled())
+                ? Duration.ZERO
+                : duration;
+        Runnable action = () -> beginFlyToAnimation(targetLat, targetLon, targetZoom, effectiveDuration);
         if (Platform.isFxApplicationThread()) {
             action.run();
         } else {
@@ -277,8 +319,11 @@ public final class MapView extends Region {
         addEventHandler(MouseEvent.MOUSE_DRAGGED, this::handleMouseDragged);
         addEventHandler(MouseEvent.MOUSE_RELEASED, this::handleMouseReleased);
         addEventHandler(MouseEvent.MOUSE_EXITED, this::handleMouseReleased);
+        addEventHandler(MouseEvent.MOUSE_CLICKED, this::handleMouseClicked);
         addEventHandler(ScrollEvent.SCROLL, this::handleScroll);
         addEventHandler(ZoomEvent.ZOOM, this::handleZoomGesture);
+        addEventHandler(ZoomEvent.ZOOM_STARTED, this::handleZoomGestureStarted);
+        addEventHandler(ZoomEvent.ZOOM_FINISHED, this::handleZoomGestureFinished);
     }
 
     private void refreshTiles() {
@@ -350,11 +395,11 @@ public final class MapView extends Region {
         if (!event.isPrimaryButtonDown()) {
             return;
         }
-        cancelFlyToAnimation();
+        cancelActiveAnimation();
         dragging = true;
         lastDragX = event.getX();
         lastDragY = event.getY();
-        event.consume();
+        // Don't consume here - let MOUSE_CLICKED fire for double-click detection
     }
 
     private void handleMouseDragged(MouseEvent event) {
@@ -366,11 +411,27 @@ public final class MapView extends Region {
         lastDragX = event.getX();
         lastDragY = event.getY();
         panByPixels(deltaX, deltaY);
-        event.consume();
+        // Don't consume - allow event bubbling
     }
 
     private void handleMouseReleased(MouseEvent event) {
         dragging = false;
+    }
+
+    private void handleMouseClicked(MouseEvent event) {
+        if (!enableDoubleClickZoom || event.getButton() != MouseButton.PRIMARY || event.getClickCount() != 2) {
+            return;
+        }
+        if (event.isConsumed()) {
+            return;
+        }
+        // Only zoom if it was a clean double-click (not after dragging)
+        if (!event.isStillSincePress()) {
+            return;
+        }
+        cancelActiveAnimation();
+        // Immediate zoom (no smooth animation for double-click input)
+        zoomAroundPoint(DOUBLE_CLICK_ZOOM_DELTA, event.getX(), event.getY());
     }
 
     private void handleScroll(ScrollEvent event) {
@@ -381,8 +442,9 @@ public final class MapView extends Region {
         if (delta == 0.0) {
             return;
         }
-        cancelFlyToAnimation();
+        cancelActiveAnimation();
         double zoomDelta = SCROLL_ZOOM_STEP * Math.signum(delta);
+        // Input zooms are instantaneous; skip animation path
         zoomAroundPoint(zoomDelta, event.getX(), event.getY());
         event.consume();
     }
@@ -392,10 +454,26 @@ public final class MapView extends Region {
         if (factor <= 0.0 || factor == 1.0) {
             return;
         }
-        cancelFlyToAnimation();
+        cancelActiveAnimation();
         double zoomDelta = Math.log(factor) / Math.log(2.0);
+        lastPinchZoomDelta = zoomDelta;
+        lastPinchPivotX = event.getX();
+        lastPinchPivotY = event.getY();
+        // Perform immediate zoom for pinch gestures (no smooth animation)
         zoomAroundPoint(zoomDelta, event.getX(), event.getY());
         event.consume();
+    }
+
+    private void handleZoomGestureStarted(ZoomEvent event) {
+        lastPinchZoomDelta = 0.0;
+        lastPinchPivotX = event.getX();
+        lastPinchPivotY = event.getY();
+        cancelActiveAnimation();
+    }
+
+    private void handleZoomGestureFinished(ZoomEvent event) {
+        // No momentum or delayed animation when pinch ends — input zooms are immediate
+        lastPinchZoomDelta = 0.0;
     }
 
     private void attachLayer(MapLayer layer, int index) {
@@ -440,7 +518,7 @@ public final class MapView extends Region {
         if (deltaX == 0.0 && deltaY == 0.0) {
             return;
         }
-        cancelFlyToAnimation();
+        cancelActiveAnimation();
         int zoomLevel = mapState.discreteZoomLevel();
         Projection.PixelCoordinate centerPixels = projection.latLonToPixel(
                 getCenterLat(), getCenterLon(), zoomLevel);
@@ -452,11 +530,68 @@ public final class MapView extends Region {
     }
 
     private void zoomAroundPoint(double zoomDelta, double pivotX, double pivotY) {
+        zoomAroundPoint(zoomDelta, pivotX, pivotY, false, Duration.ZERO, Interpolator.LINEAR);
+    }
+
+    private void zoomAroundPoint(double zoomDelta, double pivotX, double pivotY,
+            boolean animate, Duration duration, Interpolator interpolator) {
         if (zoomDelta == 0.0 || getWidth() <= 0.0 || getHeight() <= 0.0) {
             return;
         }
         double targetZoom = getZoom() + zoomDelta;
-        applyZoom(targetZoom, pivotX, pivotY);
+        if (animate && isZoomAnimationAllowed(duration)) {
+            playZoomAnimation(targetZoom, pivotX, pivotY, duration, interpolator);
+        } else {
+            applyZoom(targetZoom, pivotX, pivotY);
+        }
+    }
+
+    private boolean isZoomAnimationAllowed(Duration duration) {
+        return animationConfig.isAnimationsEnabled()
+                && duration != null
+                && duration.greaterThan(Duration.ZERO);
+    }
+
+    private void playZoomAnimation(double targetZoom, double pivotX, double pivotY,
+            Duration duration, Interpolator interpolator) {
+        double width = getWidth();
+        double height = getHeight();
+        if (width <= 0.0 || height <= 0.0) {
+            return;
+        }
+        double clampedZoom = clampZoom(targetZoom, MapState.DEFAULT_MIN_ZOOM, MapState.DEFAULT_MAX_ZOOM);
+        double currentZoom = getZoom();
+        if (Double.compare(clampedZoom, currentZoom) == 0) {
+            return;
+        }
+        Projection.LatLon focus = latLonAt(pivotX, pivotY);
+        if (focus == null) {
+            applyZoom(targetZoom, pivotX, pivotY);
+            return;
+        }
+        cancelActiveAnimation();
+        SimpleDoubleProperty animationDriver = new SimpleDoubleProperty(currentZoom);
+        ChangeListener<Number> listener = (obs, oldValue, newValue) -> {
+            setZoom(newValue.doubleValue());
+            alignCenterToFocus(focus, pivotX, pivotY);
+        };
+        animationDriver.addListener(listener);
+        Timeline timeline = new Timeline(
+                new KeyFrame(Duration.ZERO, new KeyValue(animationDriver, currentZoom)),
+                new KeyFrame(duration,
+                        new KeyValue(animationDriver, clampedZoom,
+                                interpolator != null ? interpolator : Interpolator.EASE_BOTH)));
+        Runnable cleanup = () -> animationDriver.removeListener(listener);
+        timeline.setOnFinished(event -> {
+            cleanup.run();
+            navigationTimeline = null;
+            activeAnimationCleanup = null;
+            setZoom(clampedZoom);
+            alignCenterToFocus(focus, pivotX, pivotY);
+        });
+        navigationTimeline = timeline;
+        activeAnimationCleanup = cleanup;
+        timeline.play();
     }
 
     private void applyZoom(double targetZoom, double pivotX, double pivotY) {
@@ -470,7 +605,7 @@ public final class MapView extends Region {
         if (Double.compare(clampedZoom, currentZoom) == 0) {
             return;
         }
-        cancelFlyToAnimation();
+        cancelActiveAnimation();
         Projection.LatLon focus = latLonAt(pivotX, pivotY);
         setZoom(clampedZoom);
         if (focus != null) {
@@ -480,7 +615,7 @@ public final class MapView extends Region {
 
     private void beginFlyToAnimation(double latitude, double longitude, double zoomLevel, Duration duration) {
         ensureFxThread("flyTo animations must run on the JavaFX Application Thread");
-        cancelFlyToAnimation();
+        cancelActiveAnimation();
         if (duration.lessThanOrEqualTo(Duration.ZERO)) {
             setCenterLat(latitude);
             setCenterLon(longitude);
@@ -496,24 +631,33 @@ public final class MapView extends Region {
             return;
         }
         Timeline timeline = new Timeline();
+        Interpolator interpolator = animationConfig.getFlyToInterpolator();
         timeline.getKeyFrames().addAll(
-                new KeyFrame(Duration.ZERO,
-                        new KeyValue(centerLatProperty(), startLat),
-                        new KeyValue(centerLonProperty(), startLon),
-                        new KeyValue(zoomProperty(), startZoom)),
-                new KeyFrame(duration,
-                        new KeyValue(centerLatProperty(), latitude, Interpolator.EASE_BOTH),
-                        new KeyValue(centerLonProperty(), longitude, Interpolator.EASE_BOTH),
-                        new KeyValue(zoomProperty(), zoomLevel, Interpolator.EASE_BOTH)));
-        timeline.setOnFinished(event -> flyToTimeline = null);
-        flyToTimeline = timeline;
+            new KeyFrame(Duration.ZERO,
+                new KeyValue(centerLatProperty(), startLat),
+                new KeyValue(centerLonProperty(), startLon),
+                new KeyValue(zoomProperty(), startZoom)),
+            new KeyFrame(duration,
+                new KeyValue(centerLatProperty(), latitude, interpolator),
+                new KeyValue(centerLonProperty(), longitude, interpolator),
+                new KeyValue(zoomProperty(), zoomLevel, interpolator)));
+        timeline.setOnFinished(event -> {
+            navigationTimeline = null;
+            activeAnimationCleanup = null;
+        });
+        navigationTimeline = timeline;
+        activeAnimationCleanup = null;
         timeline.play();
     }
 
-    private void cancelFlyToAnimation() {
-        if (flyToTimeline != null) {
-            flyToTimeline.stop();
-            flyToTimeline = null;
+    private void cancelActiveAnimation() {
+        if (navigationTimeline != null) {
+            navigationTimeline.stop();
+            navigationTimeline = null;
+        }
+        if (activeAnimationCleanup != null) {
+            activeAnimationCleanup.run();
+            activeAnimationCleanup = null;
         }
     }
 

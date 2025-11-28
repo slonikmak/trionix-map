@@ -85,6 +85,18 @@ The system SHALL support zooming the map with the mouse scroll wheel around the 
 - **WHEN** a user scrolls the mouse wheel down by one notch with cursor at map center
 - **THEN** the zoom level decreases by approximately 0.5 and the map scales around the cursor position
 
+### Requirement: Immediate Zoom for Mouse Wheel
+Mouse-wheel (scroll) zooming SHALL apply immediately (no in-flight, smooth animation) unless a developer explicitly enables separate programmatic animation APIs (for example `flyTo`).
+
+#### Scenario: Immediate scroll-wheel zoom
+- **WHEN** a user scrolls the mouse wheel to change zoom
+- **THEN** the zoom level shall change immediately (approx ±0.5 per notch) and the map scales around the cursor position
+- **AND** the geographic coordinate that was under the cursor before the zoom SHALL remain under the cursor within ±2 pixels tolerance after the change
+- **AND** `centerLatProperty`, `centerLonProperty`, and `zoomProperty` SHALL be updated and listeners notified as part of the single, immediate change
+
+#### Scenario: Successive or concurrent scroll input
+- **WHEN** a user performs rapid consecutive scroll inputs the map SHALL apply each input immediately and the resulting center/zoom reflect the summed effects of those inputs
+
 ### Requirement: Touch Zoom Interaction
 The system SHALL support pinch-to-zoom gestures on platforms with touch/trackpad support.
 
@@ -95,6 +107,17 @@ The system SHALL support pinch-to-zoom gestures on platforms with touch/trackpad
 #### Scenario: Pinch to zoom out
 - **WHEN** a user performs a pinch-in gesture on a touch-enabled device
 - **THEN** the zoom level decreases around the gesture center
+
+### Requirement: Immediate Zoom for Touch Gestures
+Pinch-to-zoom gestures SHALL apply immediately (no ongoing gesture animation or post-gesture momentum) — the gesture delta is applied at the time of the event and the map updates to the new zoom/center immediately.
+
+#### Scenario: Pinch-to-zoom immediate behavior
+- **WHEN** a user performs a pinch gesture on a touch-enabled device
+- **THEN** the zoom delta implied by the gesture is applied immediately around the gesture center and the geographic coordinate at the gesture center SHALL remain within ±2 pixels of the gesture point after the change
+
+#### Scenario: No post-gesture momentum
+- **WHEN** a pinch gesture finishes
+- **THEN** no further zoom is applied by the map as a continuation — any additional zoom must come from new user input or a programmatic `flyTo` call
 
 ### Requirement: Layer Management
 The system SHALL provide an observable list of `MapLayer` instances for managing custom overlays.
@@ -147,4 +170,38 @@ The `trionix-map-core` library artifact SHALL NOT include JavaFX dependencies tr
 #### Scenario: Library compiles with provided JavaFX
 - **WHEN** the library module is built
 - **THEN** JavaFX classes are available at compile time (via `provided` scope) but are not bundled in the resulting artifact
+
+### Requirement: Mouse Double-Click Zoom Interaction
+The system SHALL support zooming in the map by double-clicking the primary mouse button within the `MapView` viewport, focusing zoom around the cursor's geographic location.
+
+#### Scenario: Double-click zoom in
+- **WHEN** a user double-clicks the primary mouse button at screen position (x, y) within the map and current zoom is below max
+- **THEN** the zoom level increases by 1.0 (or clamped to max)
+- **AND** the geographic point under the cursor remains under the cursor (allowing <=2 pixels drift)
+
+#### Scenario: Double-click at max zoom
+- **WHEN** a user double-clicks and the current zoom is already at maximum
+- **THEN** the zoom level does not change
+
+#### Scenario: Double-click zoom disabled
+- **WHEN** a developer has disabled double-click zoom via a configuration flag/property
+- **AND** a user double-clicks the map
+- **THEN** no zoom action occurs
+
+#### Scenario: Event consumed by layer
+- **WHEN** a layer intercepts and consumes the double-click event (e.g., for selection)
+- **THEN** the map does not perform the zoom
+
+#### Scenario: Center preservation tolerance
+- **WHEN** a double-click zoom occurs
+- **THEN** the geographic coordinate at the cursor before zoom maps to a screen position within ±2 pixels of the original cursor position after zoom
+
+### Requirement: Double-Click Zoom Behavior
+Double-click zoom SHALL apply immediately by default. When a double-click zoom occurs the map SHALL change zoom level by +1 (clamped at max) and preserve the geographic point under the cursor within ±2 pixel tolerance.
+
+#### Scenario: Immediate behavior & center preservation
+- **WHEN** a user double-clicks the primary mouse button at screen position (x, y) within the map and the map supports a change in zoom
+- **THEN** the map immediately increments zoom by +1 (or clamps to max)
+- **AND** the geographic coordinate under the cursor prior to zoom maps to a screen position within ±2 pixels of the original cursor position after the zoom
+- **AND** the change is applied even when no animation subsystem exists (instantaneous fallback)
 

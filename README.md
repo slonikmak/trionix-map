@@ -1,6 +1,6 @@
 # Trionix JavaFX MapView
 
-Lightweight JavaFX control for rendering OpenStreetMap raster tiles with smooth pan/zoom, in-memory caching, and a pluggable overlay system.
+Lightweight JavaFX control for rendering OpenStreetMap raster tiles with smooth programmatic navigation (flyTo), immediate user-driven zoom inputs, in-memory caching, and a pluggable overlay system.
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -44,7 +44,7 @@ This is a multi-module Maven project:
      - Interactive map with control panel, multiple layers, and route drawing
    - **Quick launcher:** Run `.\run-examples.ps1` (Windows) or `./run-examples.sh` (Linux/Mac) for an interactive menu
 
-Use the mouse to drag (pan) and scroll (zoom) the map.
+Use the mouse to drag (pan) and scroll (zoom) the map. Double-click to quickly zoom in.
 
 📚 **New to the library?** Check out:
 - [QUICKSTART.md](QUICKSTART.md) - Fast introduction with minimal examples

@@ -1,0 +1,12 @@
+- [x] 1. Add config flag `enableDoubleClickZoom` (default true) to `MapView`.
+- [x] 2. Register mouse event handler for primary-button double-click on map viewport.
+- [x] 3. On unconsumed double-click: compute geographic point under cursor, apply `setZoom(clamp(getZoom()+1))`, adjust center to preserve cursor geo position.
+- [x] 4. Reuse existing zoom animation if available; otherwise perform immediate zoom.
+- [x] 5. Ensure max zoom clamp prevents changes beyond limit.
+- [x] 6. Add unit test: double-click increments zoom by 1 when enabled.
+- [x] 7. Add unit test: no zoom when disabled.
+- [x] 8. Add unit test: center preservation within small pixel tolerance (e.g., <=2px shift of clicked point).
+- [x] 9. Add unit test: no zoom beyond max level.
+- [x] 10. Update `README.md` or usage docs to mention double-click zoom interaction.
+- [x] 11. Verify no regression of scroll and pinch zoom tests.
+- [x] 12. Prepare follow-up change idea list (optional) for modifier-based zoom-out.

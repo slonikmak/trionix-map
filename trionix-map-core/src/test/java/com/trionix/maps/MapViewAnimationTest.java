@@ -97,6 +97,46 @@ class MapViewAnimationTest {
         assertThat(finalZoom).isCloseTo(3.0, within(0.01));
     }
 
+    @Test
+    void scrollZoomAppliesImmediately() throws InterruptedException {
+        MapView mapView = FxTestHarness.callOnFxThread(MapView::new);
+        FxTestHarness.runOnFxThread(() -> {
+            mapView.resize(512.0, 512.0);
+            mapView.setCenterLat(0.0);
+            mapView.setCenterLon(0.0);
+            mapView.setZoom(3.0);
+            mapView.getAnimationConfig().setAnimationsEnabled(true);
+            mapView.getAnimationConfig().setScrollZoomAnimationEnabled(true);
+            mapView.getAnimationConfig().setScrollZoomDuration(Duration.millis(250));
+        });
+
+        FxTestHarness.runOnFxThread(() -> mapView.fireEvent(createScrollEvent(120.0)));
+        double zoomNow = FxTestHarness.callOnFxThread(mapView::getZoom);
+        assertThat(zoomNow).isCloseTo(3.5, within(0.05));
+    }
+
+    @Test
+    void flyToRespectsGlobalAnimationToggle() {
+        MapView mapView = FxTestHarness.callOnFxThread(MapView::new);
+        FxTestHarness.runOnFxThread(() -> {
+            mapView.resize(512.0, 512.0);
+            mapView.setCenterLat(0.0);
+            mapView.setCenterLon(0.0);
+            mapView.setZoom(2.0);
+            mapView.getAnimationConfig().setAnimationsEnabled(false);
+        });
+
+        FxTestHarness.runOnFxThread(() -> mapView.flyTo(40.0, -74.0, 5.0, Duration.seconds(1)));
+
+        double finalLat = FxTestHarness.callOnFxThread(mapView::getCenterLat);
+        double finalLon = FxTestHarness.callOnFxThread(mapView::getCenterLon);
+        double finalZoom = FxTestHarness.callOnFxThread(mapView::getZoom);
+
+        assertThat(finalLat).isEqualTo(40.0);
+        assertThat(finalLon).isEqualTo(-74.0);
+        assertThat(finalZoom).isEqualTo(5.0);
+    }
+
     private static ScrollEvent createScrollEvent(double deltaY) {
         return new ScrollEvent(
                 ScrollEvent.SCROLL,

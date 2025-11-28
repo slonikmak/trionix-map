@@ -65,3 +65,38 @@ The system SHALL maintain smooth frame rates during flyTo animations.
 - **WHEN** a flyTo animation is in progress on typical desktop hardware
 - **THEN** the animation runs at approximately 60 frames per second without visible stuttering
 
+### Requirement: Animation Configuration
+The system SHALL provide centralized configuration for all animation behaviors to ensure consistency across interaction types.
+
+#### Scenario: Global animation enable/disable
+- **WHEN** a developer sets a global animation enabled flag to `false`
+- **THEN** all map animations (flyTo, scroll-wheel zoom, double-click zoom, pinch zoom) SHALL be disabled and execute immediately
+- **WHEN** the flag is set to `true` (default)
+- **THEN** animations SHALL execute according to their individual configuration
+
+#### Scenario: Default animation durations
+- **WHEN** the system initializes animation configuration
+- **THEN** the following default durations SHALL be used:
+  - flyTo: Duration specified by caller (no default override)
+  - Scroll-wheel zoom: 150–200 ms
+  - Double-click zoom: 200–300 ms
+  - Pinch-zoom gesture: real-time during gesture, 100–200 ms momentum after release
+
+#### Scenario: Default animation timing curves
+- **WHEN** the system performs an animation
+- **THEN** the following default easing curves SHALL be used:
+  - flyTo: ease-in-out (slow start, accelerate, slow end)
+  - Scroll-wheel zoom: ease-out (fast start, decelerate)
+  - Double-click zoom: ease-in-out
+  - Pinch-zoom: ease-out during gesture, ease-out for momentum
+
+#### Scenario: Cursor/focus point tolerance
+- **WHEN** any zoom animation maintains a geographic point under cursor or gesture center
+- **THEN** the system SHALL maintain that point within ±2 pixels screen-space tolerance at each frame
+- **SO THAT** users perceive the zoom as anchored to their intended focus point
+
+#### Scenario: Override individual animation settings
+- **WHEN** a developer provides custom animation duration or easing for a specific interaction type
+- **THEN** the custom settings SHALL override the defaults for that interaction type only
+- **AND** other animation types SHALL continue using their default or globally configured settings
+

@@ -195,6 +195,7 @@ class MapViewIntegrationTest {
                 512,
                 512,
                 view -> {
+                    view.getAnimationConfig().setAnimationsEnabled(false);
                     view.setCenterLat(centerLat);
                     view.setCenterLon(centerLon);
                     view.setZoom(initialZoom);
