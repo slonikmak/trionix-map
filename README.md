@@ -56,7 +56,10 @@ Use the mouse to drag (pan) and scroll (zoom) the map. Double-click to quickly z
 - `MapView` – JavaFX `Region` with observable `centerLat`, `centerLon`, and `zoom` properties along with a `flyTo` helper for animated navigation.
 - `MapLayer` – Abstract pane you subclass to render overlays (markers, paths, heatmaps). Layers live inside `MapView#getLayers()` and receive per-frame `layoutLayer` callbacks.
 - `TileRetriever` – Interface for asynchronous tile fetchers. The default `SimpleOsmTileRetriever` streams tiles from OpenStreetMap via `HttpClient`.
-- `TileCache` – Interface for thread-safe tile caches. `InMemoryTileCache` ships with an LRU implementation sized for a configurable number of tiles.
+- `TileCache` – Interface for thread-safe tile caches. `InMemoryTileCache` ships with an LRU implementation sized for a configurable number of tiles. Additional implementations include:
+  - `FileTileCache` – Disk-based cache with OSM-style directory structure (`{cacheDir}/{zoom}/{x}/{y}.png`) and LRU eviction.
+  - `TieredTileCache` – Composite cache that chains multiple caches (e.g., fast memory L1 → persistent disk L2).
+  - `TileCacheBuilder` – Fluent builder for creating cache configurations.
 
 ## Using `MapView`
 
@@ -97,6 +100,29 @@ pin.setPrefSize(16, 16);
 PointMarker marker = markerLayer.addMarker(48.8566, 2.3522, pin); // Paris
 marker.setDraggable(true);
 marker.setOnClick(m -> System.out.println("Marker clicked: " + m.getLatitude() + ", " + m.getLongitude()));
+```
+
+### Custom Tile Cache
+
+For persistent caching, use a tiered cache that combines fast in-memory access with disk persistence:
+
+```java
+import com.trionix.maps.TileCacheBuilder;
+import java.nio.file.Path;
+
+// Using the builder (recommended)
+TileCache cache = TileCacheBuilder.create()
+    .memory(500)                                    // L1: 500 tiles in memory
+    .disk(Path.of("~/.cache/myapp/tiles"), 10_000)  // L2: 10k tiles on disk
+    .build();
+
+MapView mapView = new MapView(new SimpleOsmTileRetriever(), cache);
+
+// Or construct directly for more control
+TileCache cache = new TieredTileCache(List.of(
+    new InMemoryTileCache(500),
+    new FileTileCache(Path.of("~/.cache/myapp/tiles"), 10_000)
+));
 ```
 
 `MapView` must be accessed from the JavaFX Application Thread. Property setters perform latitude/longitude normalization and clamp zoom to the supported range (defaults 1–19). The control automatically requests tiles, caches them, and re-renders when you change the viewport or layer stack.

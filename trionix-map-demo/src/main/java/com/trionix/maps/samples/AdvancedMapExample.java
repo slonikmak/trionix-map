@@ -2,6 +2,9 @@ package com.trionix.maps.samples;
 
 import com.trionix.maps.GeoPoint;
 import com.trionix.maps.MapView;
+import com.trionix.maps.SimpleOsmTileRetriever;
+import com.trionix.maps.TileCache;
+import com.trionix.maps.TileCacheBuilder;
 import com.trionix.maps.control.ScaleRulerControl;
 import com.trionix.maps.internal.projection.Projection;
 import com.trionix.maps.internal.projection.WebMercatorProjection;
@@ -25,6 +28,8 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.stage.Stage;
 import javafx.util.Duration;
+
+import java.nio.file.Path;
 
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -93,7 +98,14 @@ public final class AdvancedMapExample extends Application {
 
     @Override
     public void start(Stage stage) {
-        mapView = new MapView();
+        // Use a tiered cache (L1 memory -> L2 disk) for better performance and persistence.
+        Path cacheDir = Path.of(System.getProperty("user.home"), ".trionix", "tiles");
+        TileCache cache = TileCacheBuilder.create()
+            .memory(500)
+            .disk(cacheDir, 10_000)
+            .build();
+
+        mapView = new MapView(new SimpleOsmTileRetriever(), cache);
         mapView.setPrefSize(1200.0, 800.0);
         mapView.setCenterLat(55.7558);
         mapView.setCenterLon(37.6173);
