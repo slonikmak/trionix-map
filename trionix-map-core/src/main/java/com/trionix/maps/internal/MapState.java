@@ -39,7 +39,7 @@ public final class MapState {
     private double cachedViewportHeight;
 
     public MapState() {
-        this(new WebMercatorProjection(), DEFAULT_MIN_ZOOM, DEFAULT_MAX_ZOOM);
+        this(WebMercatorProjection.INSTANCE, DEFAULT_MIN_ZOOM, DEFAULT_MAX_ZOOM);
     }
 
     public MapState(Projection projection, double minZoom, double maxZoom) {

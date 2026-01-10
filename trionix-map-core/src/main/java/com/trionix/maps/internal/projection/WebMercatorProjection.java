@@ -9,6 +9,18 @@ import static com.trionix.maps.internal.util.CoordinateNormalizer.normalizeLongi
  */
 public final class WebMercatorProjection implements Projection {
 
+    /**
+     * Shared singleton instance of the Web Mercator projection.
+     * Use this instead of creating new instances.
+     */
+    public static final Projection INSTANCE = new WebMercatorProjection();
+
+    /**
+     * Package-private constructor. Use {@link #INSTANCE} instead.
+     */
+    WebMercatorProjection() {
+    }
+
     @Override
     public PixelCoordinate latLonToPixel(double latitude, double longitude, int zoom) {
         double lat = Math.toRadians(clampLatitude(latitude));

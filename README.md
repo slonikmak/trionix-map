@@ -2,28 +2,6 @@
 
 Lightweight JavaFX control for rendering OpenStreetMap raster tiles with smooth programmatic navigation (flyTo), immediate user-driven zoom inputs, in-memory caching, and a pluggable overlay system.
 
-```
-┌─────────────────────────────────────────────┐
-│  ┌───────────────────────────────────────┐  │
-│  │     MapView (JavaFX Region)           │  │
-│  │  ┌─────────────────────────────────┐  │  │
-│  │  │   Tile Layer (OSM Tiles)        │  │  │
-│  │  │   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓    │  │  │
-│  │  │   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓    │  │  │
-│  │  └─────────────────────────────────┘  │  │
-│  │  ┌─────────────────────────────────┐  │  │
-│  │  │   Layer 1: Routes (Lines)       │  │  │
-│  │  │   ───────────→                  │  │  │
-│  │  └─────────────────────────────────┘  │  │
-│  │  ┌─────────────────────────────────┐  │  │
-│  │  │   Layer 2: Markers (Custom UI)  │  │  │
-│  │  │   📍 📍 📍                       │  │  │
-│  │  └─────────────────────────────────┘  │  │
-│  └───────────────────────────────────────┘  │
-│   centerLat, centerLon, zoom properties     │
-└─────────────────────────────────────────────┘
-```
-
 ## Project Structure
 
 This is a multi-module Maven project:
@@ -146,14 +124,16 @@ Run `mvn clean verify` to execute unit tests, integration tests, and JavaFX head
 
 The `trionix-map-demo` module includes example applications in `src/main/java/com/trionix/maps/samples/`:
 
-1. **SimpleMapExample** – Minimal 20-line example
-2. **MapViewSampleApp** – Basic example demonstrating simple marker placement
-3. **AdvancedMapExample** – Comprehensive example with:
+**AdvancedMapExample** – Comprehensive example with:
    - Multiple layers (markers and routes)
    - Animated navigation with `flyTo()`
    - Interactive control panel
    - Real-time coordinate display
    - Custom styled markers and route lines
+
+```bash
+mvn -pl trionix-map-demo javafx:run
+```
 
 See `trionix-map-demo/src/main/java/com/trionix/maps/samples/README.md` for detailed documentation and code snippets.
 

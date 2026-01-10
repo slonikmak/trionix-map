@@ -11,21 +11,29 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 
 /**
- * Represents a polyline on the map, consisting of a sequence of geographic coordinates.
+ * Represents a polyline on the map, consisting of a sequence of geographic
+ * coordinates.
  * Supports custom styling, vertex markers, and interactive editing.
  */
 public final class Polyline {
 
+    private static final double DEFAULT_STROKE_WIDTH = 2.0;
+    private static final double DEFAULT_MARKER_RADIUS = 5.0;
+    private static final double DEFAULT_MARKER_STROKE_WIDTH = 1.0;
+    private static final Color DEFAULT_STROKE_COLOR = Color.BLUE;
+    private static final Color DEFAULT_MARKER_FILL = Color.RED;
+    private static final Color DEFAULT_MARKER_STROKE = Color.WHITE;
+
     private final List<GeoPoint> points = new ArrayList<>();
-    private Color strokeColor = Color.BLUE;
-    private double strokeWidth = 2.0;
+    private Color strokeColor = DEFAULT_STROKE_COLOR;
+    private double strokeWidth = DEFAULT_STROKE_WIDTH;
     private final List<Double> strokeDashArray = new ArrayList<>();
     private boolean markersVisible = false;
     private boolean editable = false;
     private Function<GeoPoint, Node> markerFactory = p -> {
-        Circle circle = new Circle(5, Color.RED);
-        circle.setStroke(Color.WHITE);
-        circle.setStrokeWidth(1);
+        Circle circle = new Circle(DEFAULT_MARKER_RADIUS, DEFAULT_MARKER_FILL);
+        circle.setStroke(DEFAULT_MARKER_STROKE);
+        circle.setStrokeWidth(DEFAULT_MARKER_STROKE_WIDTH);
         return circle;
     };
 

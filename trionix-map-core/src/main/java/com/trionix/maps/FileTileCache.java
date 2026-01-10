@@ -15,12 +15,17 @@ import javafx.scene.image.Image;
 import javax.imageio.ImageIO;
 
 /**
- * Disk-based tile cache using file system storage with OSM-style directory structure.
+ * Disk-based tile cache using file system storage with OSM-style directory
+ * structure.
  *
- * <p>Tiles are stored as PNG files at {@code {cacheDir}/{zoom}/{x}/{y}.png}.
- * LRU eviction is performed based on file last-modified time when the cache exceeds capacity.
+ * <p>
+ * Tiles are stored as PNG files at {@code {cacheDir}/{zoom}/{x}/{y}.png}.
+ * LRU eviction is performed based on file last-modified time when the cache
+ * exceeds capacity.
  *
- * <p>This implementation is thread-safe. Concurrent access is protected via locking
+ * <p>
+ * This implementation is thread-safe. Concurrent access is protected via
+ * locking
  * and atomic file operations (write to temp file, then move).
  */
 public final class FileTileCache implements TileCache {
@@ -34,7 +39,8 @@ public final class FileTileCache implements TileCache {
      *
      * @param cacheDir the directory where tiles are stored
      * @param maxFiles the maximum number of tile files to store (must be positive)
-     * @throws IllegalArgumentException if cacheDir is null or maxFiles is not positive
+     * @throws IllegalArgumentException if cacheDir is null or maxFiles is not
+     *                                  positive
      */
     public FileTileCache(Path cacheDir, int maxFiles) {
         if (cacheDir == null) {
@@ -50,15 +56,15 @@ public final class FileTileCache implements TileCache {
     @Override
     public Image get(int zoom, long x, long y) {
         Path tilePath = tilePath(zoom, x, y);
-        if (!Files.exists(tilePath)) {
-            return null;
-        }
         try {
-            // Touch file for LRU tracking
+            // Touch file for LRU tracking - this also verifies existence
             Files.setLastModifiedTime(tilePath, FileTime.fromMillis(System.currentTimeMillis()));
             return new Image(tilePath.toUri().toString());
         } catch (IOException e) {
-            // File may have been deleted by concurrent eviction
+            // File doesn't exist or was deleted by concurrent eviction
+            return null;
+        } catch (IllegalArgumentException e) {
+            // Invalid or corrupted image file
             return null;
         }
     }

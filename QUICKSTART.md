@@ -21,14 +21,11 @@
 
 Или напрямую через Maven:
 ```bash
-# Простейший пример (20 строк кода)
-mvn compile exec:java -Dexec.mainClass=com.trionix.maps.samples.SimpleMapExample
-
-# Базовый пример с маркерами
-mvn compile exec:java -Dexec.mainClass=com.trionix.maps.samples.MapViewSampleApp
-
 # Продвинутый пример с панелью управления
 mvn compile exec:java -Dexec.mainClass=com.trionix.maps.samples.AdvancedMapExample
+
+# Или так
+mvn -pl trionix-map-demo javafx:run
 ```
 
 ## Минимальный код

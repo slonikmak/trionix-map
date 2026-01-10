@@ -87,7 +87,7 @@ public final class AdvancedMapExample extends Application {
     private ToggleButton addMarkerModeBtn;
     private ToggleButton drawLineModeBtn;
 
-    private final Projection projection = new WebMercatorProjection();
+    private final Projection projection = WebMercatorProjection.INSTANCE;
 
     private static class MarkerData {
         String name;

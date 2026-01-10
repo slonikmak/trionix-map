@@ -18,13 +18,15 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Tests cursor-focus preservation during user-initiated zoom interactions.
- * The spec requires that the geographic point under the cursor remains within ±2 pixels
- * of its original screen position after scroll-wheel and double-click zooms (zoom is immediate).
+ * The spec requires that the geographic point under the cursor remains within
+ * ±2 pixels
+ * of its original screen position after scroll-wheel and double-click zooms
+ * (zoom is immediate).
  */
 class MapViewCursorFocusTest {
 
     private static final double PIXEL_TOLERANCE = 2.0;
-    private final Projection projection = new WebMercatorProjection();
+    private final Projection projection = WebMercatorProjection.INSTANCE;
 
     @Test
     void scrollZoomPreservesCursorFocusWithinTwoPixels() throws InterruptedException {
@@ -35,7 +37,8 @@ class MapViewCursorFocusTest {
         try (MountedMapView mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 512, 512)) {
             FxTestHarness.runOnFxThread(() -> {
                 MapView view = mounted.mapView();
-                // Input zooms are immediate in the runtime behavior — animations are not applied
+                // Input zooms are immediate in the runtime behavior — animations are not
+                // applied
                 view.getAnimationConfig().setAnimationsEnabled(false);
                 view.setCenterLat(37.7749);
                 view.setCenterLon(-122.4194);
@@ -48,14 +51,13 @@ class MapViewCursorFocusTest {
             double scrollY = 192.0;
 
             // Capture the geographic point under the cursor before zoom
-            Projection.LatLon geoPointBefore = FxTestHarness.callOnFxThread(() ->
-                    latLonAt(mounted.mapView(), scrollX, scrollY));
+            Projection.LatLon geoPointBefore = FxTestHarness
+                    .callOnFxThread(() -> latLonAt(mounted.mapView(), scrollX, scrollY));
 
-                // Trigger scroll zoom and verify focus immediately
-                FxTestHarness.runOnFxThread(() ->
-                    mounted.mapView().fireEvent(createScrollEvent(120.0, scrollX, scrollY)));
-            double pixelShift = FxTestHarness.callOnFxThread(() ->
-                    computePixelShift(mounted.mapView(), geoPointBefore, scrollX, scrollY));
+            // Trigger scroll zoom and verify focus immediately
+            FxTestHarness.runOnFxThread(() -> mounted.mapView().fireEvent(createScrollEvent(120.0, scrollX, scrollY)));
+            double pixelShift = FxTestHarness
+                    .callOnFxThread(() -> computePixelShift(mounted.mapView(), geoPointBefore, scrollX, scrollY));
 
             assertThat(pixelShift)
                     .describedAs("Geographic point should remain within ±2px of cursor during scroll zoom")
@@ -86,14 +88,13 @@ class MapViewCursorFocusTest {
             double clickY = 256.0;
 
             // Capture the geographic point under the cursor before zoom
-            Projection.LatLon geoPointBefore = FxTestHarness.callOnFxThread(() ->
-                    latLonAt(mounted.mapView(), clickX, clickY));
+            Projection.LatLon geoPointBefore = FxTestHarness
+                    .callOnFxThread(() -> latLonAt(mounted.mapView(), clickX, clickY));
 
-                // Trigger double-click zoom and verify focus immediately
-                FxTestHarness.runOnFxThread(() ->
-                    mounted.mapView().fireEvent(mouseDoubleClick(clickX, clickY)));
-            double pixelShift = FxTestHarness.callOnFxThread(() ->
-                    computePixelShift(mounted.mapView(), geoPointBefore, clickX, clickY));
+            // Trigger double-click zoom and verify focus immediately
+            FxTestHarness.runOnFxThread(() -> mounted.mapView().fireEvent(mouseDoubleClick(clickX, clickY)));
+            double pixelShift = FxTestHarness
+                    .callOnFxThread(() -> computePixelShift(mounted.mapView(), geoPointBefore, clickX, clickY));
 
             assertThat(pixelShift)
                     .describedAs("Geographic point should remain within ±2px of cursor during double-click zoom")
@@ -121,14 +122,14 @@ class MapViewCursorFocusTest {
             double initialLon = FxTestHarness.callOnFxThread(() -> mounted.mapView().getCenterLon());
 
             // Scroll at the exact center of the map
-                FxTestHarness.runOnFxThread(() ->
-                    mounted.mapView().fireEvent(createScrollEvent(120.0, 256.0, 256.0)));
+            FxTestHarness.runOnFxThread(() -> mounted.mapView().fireEvent(createScrollEvent(120.0, 256.0, 256.0)));
 
             double finalLat = FxTestHarness.callOnFxThread(() -> mounted.mapView().getCenterLat());
             double finalLon = FxTestHarness.callOnFxThread(() -> mounted.mapView().getCenterLon());
             double finalZoom = FxTestHarness.callOnFxThread(() -> mounted.mapView().getZoom());
 
-            // When scrolling at center, the center coordinates should remain nearly unchanged
+            // When scrolling at center, the center coordinates should remain nearly
+            // unchanged
             assertThat(finalLat).isCloseTo(initialLat, within(0.01));
             assertThat(finalLon).isCloseTo(initialLon, within(0.01));
             assertThat(finalZoom).isCloseTo(8.5, within(0.05));
@@ -155,8 +156,8 @@ class MapViewCursorFocusTest {
             double scrollY = 300.0;
 
             // Capture initial geographic point
-            Projection.LatLon geoPoint = FxTestHarness.callOnFxThread(() ->
-                    latLonAt(mounted.mapView(), scrollX, scrollY));
+            Projection.LatLon geoPoint = FxTestHarness
+                    .callOnFxThread(() -> latLonAt(mounted.mapView(), scrollX, scrollY));
 
             // Perform three consecutive scroll zoom operations
             FxTestHarness.runOnFxThread(() -> {
@@ -165,9 +166,10 @@ class MapViewCursorFocusTest {
                 mounted.mapView().fireEvent(createScrollEvent(120.0, scrollX, scrollY));
             });
 
-            // After all zooms, the original geographic point should still be within tolerance
-            double pixelShift = FxTestHarness.callOnFxThread(() ->
-                    computePixelShift(mounted.mapView(), geoPoint, scrollX, scrollY));
+            // After all zooms, the original geographic point should still be within
+            // tolerance
+            double pixelShift = FxTestHarness
+                    .callOnFxThread(() -> computePixelShift(mounted.mapView(), geoPoint, scrollX, scrollY));
 
             assertThat(pixelShift)
                     .describedAs("Geographic point should remain within ±2px after multiple scroll zooms")
@@ -195,7 +197,8 @@ class MapViewCursorFocusTest {
     }
 
     /**
-     * Computes how many pixels a geographic point has shifted from its expected screen position.
+     * Computes how many pixels a geographic point has shifted from its expected
+     * screen position.
      */
     private double computePixelShift(MapView mapView, Projection.LatLon geoPoint, double expectedX, double expectedY) {
         if (geoPoint == null) {

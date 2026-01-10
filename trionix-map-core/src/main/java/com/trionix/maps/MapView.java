@@ -5,6 +5,7 @@ import static com.trionix.maps.internal.util.CoordinateNormalizer.clampZoom;
 import static com.trionix.maps.internal.util.CoordinateNormalizer.normalizeLongitude;
 
 import com.trionix.maps.internal.MapState;
+import com.trionix.maps.internal.interaction.MapInteractionHandler;
 import com.trionix.maps.internal.projection.Projection;
 import com.trionix.maps.internal.projection.WebMercatorProjection;
 import com.trionix.maps.internal.tiles.PlaceholderTileFactory;
@@ -31,19 +32,19 @@ import javafx.collections.ObservableList;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.image.Image;
-import javafx.scene.input.MouseButton;
-import javafx.scene.input.MouseEvent;
-import javafx.scene.input.ScrollEvent;
-import javafx.scene.input.ZoomEvent;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Region;
 import javafx.util.Duration;
 
 /**
- * JavaFX {@link Region} that renders OpenStreetMap raster tiles and exposes observable center
- * and zoom properties for binding-based applications. Unless otherwise noted, all mutating API
- * calls must occur on the JavaFX Application Thread. Convenience methods such as
- * {@link #flyTo(double, double, double, javafx.util.Duration)} will internally marshal to the FX
+ * JavaFX {@link Region} that renders OpenStreetMap raster tiles and exposes
+ * observable center
+ * and zoom properties for binding-based applications. Unless otherwise noted,
+ * all mutating API
+ * calls must occur on the JavaFX Application Thread. Convenience methods such
+ * as
+ * {@link #flyTo(double, double, double, javafx.util.Duration)} will internally
+ * marshal to the FX
  * thread when necessary.
  */
 public final class MapView extends Region {
@@ -51,14 +52,12 @@ public final class MapView extends Region {
     private static final int DEFAULT_CACHE_CAPACITY = 500;
     private static final double PREF_SIZE = 512.0;
     private static final Image PLACEHOLDER = PlaceholderTileFactory.placeholder();
-    private static final double SCROLL_ZOOM_STEP = 0.5;
-    private static final double DOUBLE_CLICK_ZOOM_DELTA = 1.0;
 
-        private final DoubleProperty centerLat = createNormalizedProperty(
+    private final DoubleProperty centerLat = createNormalizedProperty(
             "centerLat", v -> clampLatitude(v), 0.0);
-        private final DoubleProperty centerLon = createNormalizedProperty(
+    private final DoubleProperty centerLon = createNormalizedProperty(
             "centerLon", v -> normalizeLongitude(v), 0.0);
-        private final DoubleProperty zoom = createNormalizedProperty(
+    private final DoubleProperty zoom = createNormalizedProperty(
             "zoom", v -> clampZoom(v, MapState.DEFAULT_MIN_ZOOM, MapState.DEFAULT_MAX_ZOOM), 1.0);
 
     private final MapAnimationConfig animationConfig = new MapAnimationConfig();
@@ -66,23 +65,17 @@ public final class MapView extends Region {
 
     private final MapState mapState = new MapState();
     private final TileManager tileManager;
-    private final Projection projection = new WebMercatorProjection();
+    private final Projection projection = WebMercatorProjection.INSTANCE;
     private final Canvas tileCanvas = new Canvas();
     private final Pane layerPane = new Pane();
     private final GraphicsContext graphics = tileCanvas.getGraphicsContext2D();
     private final ObservableList<MapLayer> layers = FXCollections.observableArrayList();
+    private final MapInteractionHandler interactionHandler;
     private Timeline navigationTimeline;
     private Runnable activeAnimationCleanup;
 
-    private double lastPinchZoomDelta;
-    private double lastPinchPivotX;
-    private double lastPinchPivotY;
-
     private List<TileCoordinate> currentVisibleTiles = List.of();
     private boolean refreshPending;
-    private boolean dragging;
-    private double lastDragX;
-    private double lastDragY;
 
     /**
      * Creates a {@code MapView} that uses {@link SimpleOsmTileRetriever} and an
@@ -93,26 +86,31 @@ public final class MapView extends Region {
     }
 
     /**
-     * Creates a {@code MapView} backed by the provided retriever and cache implementations.
+     * Creates a {@code MapView} backed by the provided retriever and cache
+     * implementations.
      *
-     * @param retriever strategy used to fetch tiles; must be thread-safe because it is invoked from
+     * @param retriever strategy used to fetch tiles; must be thread-safe because it
+     *                  is invoked from
      *                  background threads
-     * @param cache in-memory cache for decoded {@link Image} instances; must be thread-safe because
-     *              it is accessed concurrently by the tile loader
+     * @param cache     in-memory cache for decoded {@link Image} instances; must be
+     *                  thread-safe because
+     *                  it is accessed concurrently by the tile loader
      */
     public MapView(TileRetriever retriever, TileCache cache) {
         Objects.requireNonNull(retriever, "retriever");
         Objects.requireNonNull(cache, "cache");
         this.tileManager = new TileManager(cache, retriever);
+        this.interactionHandler = new MapInteractionHandler(this);
 
         initializeProperties();
         initializeSceneGraph();
-        initializeInteractionHandlers();
+        interactionHandler.install();
         initializeLayers();
     }
 
     /**
-     * Returns the live list of {@link MapLayer layers} rendered above the tile canvas. The list is
+     * Returns the live list of {@link MapLayer layers} rendered above the tile
+     * canvas. The list is
      * observable, and modifications must occur on the JavaFX Application Thread.
      */
     public ObservableList<MapLayer> getLayers() {
@@ -120,7 +118,17 @@ public final class MapView extends Region {
     }
 
     /**
-     * Returns the observable latitude property. Values are automatically clamped to the valid
+     * Returns the projection used by this map view.
+     * 
+     * @return the Web Mercator projection instance
+     */
+    public Projection getProjection() {
+        return projection;
+    }
+
+    /**
+     * Returns the observable latitude property. Values are automatically clamped to
+     * the valid
      * Web Mercator latitude range.
      */
     public DoubleProperty centerLatProperty() {
@@ -135,14 +143,16 @@ public final class MapView extends Region {
     }
 
     /**
-     * Updates the center latitude in degrees. Values outside the projection range are clamped.
+     * Updates the center latitude in degrees. Values outside the projection range
+     * are clamped.
      */
     public void setCenterLat(double latitude) {
         centerLat.set(latitude);
     }
 
     /**
-     * Returns the observable longitude property. Longitudes are normalized to the {@code [-180,
+     * Returns the observable longitude property. Longitudes are normalized to the
+     * {@code [-180,
      * 180)} range.
      */
     public DoubleProperty centerLonProperty() {
@@ -157,14 +167,16 @@ public final class MapView extends Region {
     }
 
     /**
-     * Updates the center longitude in degrees. Values are normalized to the Web Mercator range.
+     * Updates the center longitude in degrees. Values are normalized to the Web
+     * Mercator range.
      */
     public void setCenterLon(double longitude) {
         centerLon.set(longitude);
     }
 
     /**
-     * Returns the observable zoom property. Zoom levels are clamped to the supported discrete
+     * Returns the observable zoom property. Zoom levels are clamped to the
+     * supported discrete
      * range (defaults: 1–19).
      */
     public DoubleProperty zoomProperty() {
@@ -172,7 +184,8 @@ public final class MapView extends Region {
     }
 
     /**
-     * Returns the current zoom value. Fractional zooms are supported and rendered via smooth
+     * Returns the current zoom value. Fractional zooms are supported and rendered
+     * via smooth
      * scaling.
      */
     public double getZoom() {
@@ -180,7 +193,19 @@ public final class MapView extends Region {
     }
 
     /**
-     * Updates the zoom level. Values are clamped to {@link MapState#DEFAULT_MIN_ZOOM} and
+     * Returns the current zoom level as a discrete integer (floor of the zoom
+     * value).
+     * This is the zoom level used for tile calculations.
+     * 
+     * @return discrete zoom level, always >= 0
+     */
+    public int getDiscreteZoomLevel() {
+        return mapState.discreteZoomLevel();
+    }
+
+    /**
+     * Updates the zoom level. Values are clamped to
+     * {@link MapState#DEFAULT_MIN_ZOOM} and
      * {@link MapState#DEFAULT_MAX_ZOOM}.
      */
     public void setZoom(double zoomLevel) {
@@ -195,18 +220,22 @@ public final class MapView extends Region {
     }
 
     /**
-     * Enables or disables double-click zoom functionality. When enabled (default), double-clicking
+     * Enables or disables double-click zoom functionality. When enabled (default),
+     * double-clicking
      * the primary mouse button zooms in by one level around the cursor position.
      *
-     * @param enable {@code true} to enable double-click zoom, {@code false} to disable
+     * @param enable {@code true} to enable double-click zoom, {@code false} to
+     *               disable
      */
     public void setEnableDoubleClickZoom(boolean enable) {
         this.enableDoubleClickZoom = enable;
     }
 
     /**
-     * Returns the animation configuration responsible for scroll, double-click, touch, and fly-to
-     * transitions. Changes take effect immediately and allow callers to customize durations,
+     * Returns the animation configuration responsible for scroll, double-click,
+     * touch, and fly-to
+     * transitions. Changes take effect immediately and allow callers to customize
+     * durations,
      * easing, or disable animations entirely.
      */
     public MapAnimationConfig getAnimationConfig() {
@@ -215,13 +244,15 @@ public final class MapView extends Region {
 
     /**
      * Smoothly animates the viewport to the provided center and zoom using a JavaFX
-     * {@link Timeline}. A zero or negative duration jumps immediately. This method accepts calls
-     * from any thread and will marshal to the JavaFX Application Thread automatically.
+     * {@link Timeline}. A zero or negative duration jumps immediately. This method
+     * accepts calls
+     * from any thread and will marshal to the JavaFX Application Thread
+     * automatically.
      *
-     * @param latitude target latitude
+     * @param latitude  target latitude
      * @param longitude target longitude
      * @param zoomLevel target zoom level
-     * @param duration animation duration (must be finite)
+     * @param duration  animation duration (must be finite)
      */
     public void flyTo(double latitude, double longitude, double zoomLevel, Duration duration) {
         Objects.requireNonNull(duration, "duration");
@@ -233,8 +264,8 @@ public final class MapView extends Region {
         double targetZoom = clampZoom(zoomLevel, MapState.DEFAULT_MIN_ZOOM, MapState.DEFAULT_MAX_ZOOM);
         Duration effectiveDuration = (!animationConfig.isAnimationsEnabled()
                 || !animationConfig.isFlyToAnimationEnabled())
-                ? Duration.ZERO
-                : duration;
+                        ? Duration.ZERO
+                        : duration;
         Runnable action = () -> beginFlyToAnimation(targetLat, targetLon, targetZoom, effectiveDuration);
         if (Platform.isFxApplicationThread()) {
             action.run();
@@ -314,18 +345,6 @@ public final class MapView extends Region {
         getStyleClass().add("map-view");
     }
 
-    private void initializeInteractionHandlers() {
-        addEventHandler(MouseEvent.MOUSE_PRESSED, this::handleMousePressed);
-        addEventHandler(MouseEvent.MOUSE_DRAGGED, this::handleMouseDragged);
-        addEventHandler(MouseEvent.MOUSE_RELEASED, this::handleMouseReleased);
-        addEventHandler(MouseEvent.MOUSE_EXITED, this::handleMouseReleased);
-        addEventHandler(MouseEvent.MOUSE_CLICKED, this::handleMouseClicked);
-        addEventHandler(ScrollEvent.SCROLL, this::handleScroll);
-        addEventHandler(ZoomEvent.ZOOM, this::handleZoomGesture);
-        addEventHandler(ZoomEvent.ZOOM_STARTED, this::handleZoomGestureStarted);
-        addEventHandler(ZoomEvent.ZOOM_FINISHED, this::handleZoomGestureFinished);
-    }
-
     private void refreshTiles() {
         if (mapState.getViewportWidth() <= 0 || mapState.getViewportHeight() <= 0) {
             return;
@@ -391,91 +410,6 @@ public final class MapView extends Region {
         }
     }
 
-    private void handleMousePressed(MouseEvent event) {
-        if (!event.isPrimaryButtonDown()) {
-            return;
-        }
-        cancelActiveAnimation();
-        dragging = true;
-        lastDragX = event.getX();
-        lastDragY = event.getY();
-        // Don't consume here - let MOUSE_CLICKED fire for double-click detection
-    }
-
-    private void handleMouseDragged(MouseEvent event) {
-        if (!dragging || !event.isPrimaryButtonDown()) {
-            return;
-        }
-        double deltaX = event.getX() - lastDragX;
-        double deltaY = event.getY() - lastDragY;
-        lastDragX = event.getX();
-        lastDragY = event.getY();
-        panByPixels(deltaX, deltaY);
-        // Don't consume - allow event bubbling
-    }
-
-    private void handleMouseReleased(MouseEvent event) {
-        dragging = false;
-    }
-
-    private void handleMouseClicked(MouseEvent event) {
-        if (!enableDoubleClickZoom || event.getButton() != MouseButton.PRIMARY || event.getClickCount() != 2) {
-            return;
-        }
-        if (event.isConsumed()) {
-            return;
-        }
-        // Only zoom if it was a clean double-click (not after dragging)
-        if (!event.isStillSincePress()) {
-            return;
-        }
-        cancelActiveAnimation();
-        // Immediate zoom (no smooth animation for double-click input)
-        zoomAroundPoint(DOUBLE_CLICK_ZOOM_DELTA, event.getX(), event.getY());
-    }
-
-    private void handleScroll(ScrollEvent event) {
-        if (event.isInertia()) {
-            return;
-        }
-        double delta = event.getDeltaY();
-        if (delta == 0.0) {
-            return;
-        }
-        cancelActiveAnimation();
-        double zoomDelta = SCROLL_ZOOM_STEP * Math.signum(delta);
-        // Input zooms are instantaneous; skip animation path
-        zoomAroundPoint(zoomDelta, event.getX(), event.getY());
-        event.consume();
-    }
-
-    private void handleZoomGesture(ZoomEvent event) {
-        double factor = event.getZoomFactor();
-        if (factor <= 0.0 || factor == 1.0) {
-            return;
-        }
-        cancelActiveAnimation();
-        double zoomDelta = Math.log(factor) / Math.log(2.0);
-        lastPinchZoomDelta = zoomDelta;
-        lastPinchPivotX = event.getX();
-        lastPinchPivotY = event.getY();
-        // Perform immediate zoom for pinch gestures (no smooth animation)
-        zoomAroundPoint(zoomDelta, event.getX(), event.getY());
-        event.consume();
-    }
-
-    private void handleZoomGestureStarted(ZoomEvent event) {
-        lastPinchZoomDelta = 0.0;
-        lastPinchPivotX = event.getX();
-        lastPinchPivotY = event.getY();
-        cancelActiveAnimation();
-    }
-
-    private void handleZoomGestureFinished(ZoomEvent event) {
-        // No momentum or delayed animation when pinch ends — input zooms are immediate
-        lastPinchZoomDelta = 0.0;
-    }
-
     private void attachLayer(MapLayer layer, int index) {
         Objects.requireNonNull(layer, "layer");
         if (layer.getMapView() != null && layer.getMapView() != this) {
@@ -514,7 +448,13 @@ public final class MapView extends Region {
         });
     }
 
-    private void panByPixels(double deltaX, double deltaY) {
+    /**
+     * Pans the map by the specified pixel delta.
+     *
+     * @param deltaX pixel offset in X direction (positive moves map content right)
+     * @param deltaY pixel offset in Y direction (positive moves map content down)
+     */
+    public void panByPixelsDelta(double deltaX, double deltaY) {
         if (deltaX == 0.0 && deltaY == 0.0) {
             return;
         }
@@ -527,6 +467,18 @@ public final class MapView extends Region {
         Projection.LatLon latLon = projection.pixelToLatLon(newPixelX, newPixelY, zoomLevel);
         setCenterLat(latLon.latitude());
         setCenterLon(latLon.longitude());
+    }
+
+    /**
+     * Zooms the map by the specified delta around the given pivot point.
+     *
+     * @param zoomDelta amount to change zoom by (positive zooms in, negative zooms
+     *                  out)
+     * @param pivotX    x coordinate of the zoom pivot point
+     * @param pivotY    y coordinate of the zoom pivot point
+     */
+    public void zoomAroundPointBy(double zoomDelta, double pivotX, double pivotY) {
+        zoomAroundPoint(zoomDelta, pivotX, pivotY);
     }
 
     private void zoomAroundPoint(double zoomDelta, double pivotX, double pivotY) {
@@ -633,14 +585,14 @@ public final class MapView extends Region {
         Timeline timeline = new Timeline();
         Interpolator interpolator = animationConfig.getFlyToInterpolator();
         timeline.getKeyFrames().addAll(
-            new KeyFrame(Duration.ZERO,
-                new KeyValue(centerLatProperty(), startLat),
-                new KeyValue(centerLonProperty(), startLon),
-                new KeyValue(zoomProperty(), startZoom)),
-            new KeyFrame(duration,
-                new KeyValue(centerLatProperty(), latitude, interpolator),
-                new KeyValue(centerLonProperty(), longitude, interpolator),
-                new KeyValue(zoomProperty(), zoomLevel, interpolator)));
+                new KeyFrame(Duration.ZERO,
+                        new KeyValue(centerLatProperty(), startLat),
+                        new KeyValue(centerLonProperty(), startLon),
+                        new KeyValue(zoomProperty(), startZoom)),
+                new KeyFrame(duration,
+                        new KeyValue(centerLatProperty(), latitude, interpolator),
+                        new KeyValue(centerLonProperty(), longitude, interpolator),
+                        new KeyValue(zoomProperty(), zoomLevel, interpolator)));
         timeline.setOnFinished(event -> {
             navigationTimeline = null;
             activeAnimationCleanup = null;
@@ -650,7 +602,10 @@ public final class MapView extends Region {
         timeline.play();
     }
 
-    private void cancelActiveAnimation() {
+    /**
+     * Cancels any active navigation or zoom animation.
+     */
+    public void cancelActiveAnimation() {
         if (navigationTimeline != null) {
             navigationTimeline.stop();
             navigationTimeline = null;
@@ -667,7 +622,7 @@ public final class MapView extends Region {
         }
     }
 
-    private Projection.LatLon latLonAt(double sceneX, double sceneY) {
+    private Projection.LatLon latLonAt(double localX, double localY) {
         double width = getWidth();
         double height = getHeight();
         if (width <= 0.0 || height <= 0.0) {
@@ -676,11 +631,58 @@ public final class MapView extends Region {
         int zoomLevel = mapState.discreteZoomLevel();
         Projection.PixelCoordinate centerPixels = projection.latLonToPixel(
                 getCenterLat(), getCenterLon(), zoomLevel);
-        double offsetX = sceneX - width / 2.0;
-        double offsetY = sceneY - height / 2.0;
+        double offsetX = localX - width / 2.0;
+        double offsetY = localY - height / 2.0;
         double pixelX = centerPixels.x() + offsetX;
         double pixelY = centerPixels.y() + offsetY;
         return projection.pixelToLatLon(pixelX, pixelY, zoomLevel);
+    }
+
+    /**
+     * Converts local (map-relative) coordinates to geographic coordinates.
+     * 
+     * @param localX x coordinate relative to the map view
+     * @param localY y coordinate relative to the map view
+     * @return GeoPoint at the specified location, or null if the view has no size
+     */
+    public GeoPoint localToGeoPoint(double localX, double localY) {
+        Projection.LatLon latLon = latLonAt(localX, localY);
+        return latLon != null ? GeoPoint.of(latLon.latitude(), latLon.longitude()) : null;
+    }
+
+    /**
+     * Converts scene coordinates to geographic coordinates.
+     * 
+     * @param sceneX x coordinate in the scene
+     * @param sceneY y coordinate in the scene
+     * @return GeoPoint at the specified location, or null if the view has no size
+     */
+    public GeoPoint sceneToGeoPoint(double sceneX, double sceneY) {
+        var local = sceneToLocal(sceneX, sceneY);
+        return localToGeoPoint(local.getX(), local.getY());
+    }
+
+    /**
+     * Converts geographic coordinates to local (map-relative) coordinates.
+     * 
+     * @param latitude  latitude in degrees
+     * @param longitude longitude in degrees
+     * @return Point2D with local x,y coordinates, or null if the view has no size
+     */
+    public javafx.geometry.Point2D geoPointToLocal(double latitude, double longitude) {
+        double width = getWidth();
+        double height = getHeight();
+        if (width <= 0.0 || height <= 0.0) {
+            return null;
+        }
+        int zoomLevel = getDiscreteZoomLevel();
+        Projection.PixelCoordinate centerPixels = projection.latLonToPixel(
+                getCenterLat(), getCenterLon(), zoomLevel);
+        Projection.PixelCoordinate targetPixels = projection.latLonToPixel(
+                latitude, longitude, zoomLevel);
+        double localX = targetPixels.x() - centerPixels.x() + width / 2.0;
+        double localY = targetPixels.y() - centerPixels.y() + height / 2.0;
+        return new javafx.geometry.Point2D(localX, localY);
     }
 
     private void alignCenterToFocus(Projection.LatLon focus, double pivotX, double pivotY) {

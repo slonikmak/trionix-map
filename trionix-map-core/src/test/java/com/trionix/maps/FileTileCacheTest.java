@@ -206,4 +206,32 @@ class FileTileCacheTest {
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("image");
     }
+
+    @Test
+    void get_returnsNullWhenFileDoesNotExist() {
+        FileTileCache cache = new FileTileCache(cacheDir, 100);
+
+        // Test that get() on non-existent file returns null without throwing
+        Image result = cache.get(1, 999, 999);
+
+        assertThat(result).isNull();
+    }
+
+    @Test
+    void get_returnsNullWhenFileDeletedConcurrently() throws IOException {
+        FileTileCache cache = new FileTileCache(cacheDir, 100);
+
+        // Put a tile first
+        cache.put(1, 1, 1, sampleImage);
+        Path tilePath = cacheDir.resolve("1").resolve("1").resolve("1.png");
+        assertThat(Files.exists(tilePath)).isTrue();
+
+        // Delete the file to simulate concurrent eviction
+        Files.delete(tilePath);
+
+        // get() should return null gracefully without throwing
+        Image result = cache.get(1, 1, 1);
+
+        assertThat(result).isNull();
+    }
 }

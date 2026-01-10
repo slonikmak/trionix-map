@@ -7,8 +7,11 @@ import javafx.scene.Node;
 /**
  * Represents a single map marker with geographic coordinates and a visual node.
  *
- * <p>Markers are lightweight value objects which hold their geographic location and a visual
- * {@link javafx.scene.Node} that will be positioned by {@link PointMarkerLayer} during layout.
+ * <p>
+ * Markers are lightweight value objects which hold their geographic location
+ * and a visual
+ * {@link javafx.scene.Node} that will be positioned by {@link PointMarkerLayer}
+ * during layout.
  */
 public final class PointMarker {
 
@@ -19,8 +22,10 @@ public final class PointMarker {
     private boolean visible = true;
     private Consumer<PointMarker> onClick;
     private Consumer<PointMarker> onLocationChanged;
+    private MarkerChangeListener changeListener;
 
-    // owner set by PointMarkerLayer when marker is added
+    // owner set by PointMarkerLayer when marker is added (kept for backward
+    // compatibility)
     PointMarkerLayer owner;
 
     PointMarker(double latitude, double longitude, Node node) {
@@ -44,7 +49,8 @@ public final class PointMarker {
     }
 
     /**
-     * Returns the visual node used to render this marker. The node is owned by the layer's
+     * Returns the visual node used to render this marker. The node is owned by the
+     * layer's
      * scene graph and must not be shared across different layers.
      */
     public Node getNode() {
@@ -52,7 +58,8 @@ public final class PointMarker {
     }
 
     /**
-     * Returns whether the marker will respond to mouse drag gestures to update its location.
+     * Returns whether the marker will respond to mouse drag gestures to update its
+     * location.
      */
     public boolean isDraggable() {
         return draggable;
@@ -66,14 +73,16 @@ public final class PointMarker {
     }
 
     /**
-     * Returns whether the marker is currently visible and participates in layout and events.
+     * Returns whether the marker is currently visible and participates in layout
+     * and events.
      */
     public boolean isVisible() {
         return visible;
     }
 
     /**
-     * Shows or hides the marker. When hidden the node is set non-interactive and not shown.
+     * Shows or hides the marker. When hidden the node is set non-interactive and
+     * not shown.
      */
     public void setVisible(boolean visible) {
         this.visible = visible;
@@ -82,7 +91,8 @@ public final class PointMarker {
     }
 
     /**
-     * Registers a click callback that will receive this marker instance when the visual node is
+     * Registers a click callback that will receive this marker instance when the
+     * visual node is
      * clicked. A {@code null} handler removes any existing callback.
      */
     public void setOnClick(Consumer<PointMarker> handler) {
@@ -91,30 +101,41 @@ public final class PointMarker {
 
     /**
      * Registers a callback invoked when this marker's geographic location changes.
-     * The handler receives this marker instance and may be {@code null} to remove the callback.
+     * The handler receives this marker instance and may be {@code null} to remove
+     * the callback.
      */
     public void setOnLocationChanged(Consumer<PointMarker> handler) {
         this.onLocationChanged = handler;
     }
 
     /**
-     * Returns the current click handler for this marker, or {@code null} if none is registered.
+     * Returns the current click handler for this marker, or {@code null} if none is
+     * registered.
      */
     public Consumer<PointMarker> getOnClick() {
         return onClick;
     }
 
     /**
-     * Updates the geographic location and triggers a layout pass on the owning layer.
+     * Sets the change listener for this marker. Package-private for use by the
+     * layer.
      */
+    void setChangeListener(MarkerChangeListener listener) {
+        this.changeListener = listener;
+    }
+
     /**
      * Updates the geographic coordinates for this marker. The owning
-     * {@link PointMarkerLayer} (if present) will be requested to re-layout so the visual node
+     * {@link PointMarkerLayer} (if present) will be requested to re-layout so the
+     * visual node
      * is moved on the next pulse.
      */
     public void setLocation(double latitude, double longitude) {
         this.latitude = latitude;
         this.longitude = longitude;
+        if (changeListener != null) {
+            changeListener.onMarkerChanged(this);
+        }
         if (owner != null) {
             owner.requestLayerLayout();
         }

@@ -12,7 +12,8 @@ import javafx.scene.text.Font;
 import javafx.scene.text.Text;
 
 /**
- * A control that displays a visual scale ruler indicating the distance represented by a segment
+ * A control that displays a visual scale ruler indicating the distance
+ * represented by a segment
  * on the map at the current zoom level and center latitude.
  */
 public final class ScaleRulerControl extends Region {
@@ -26,7 +27,8 @@ public final class ScaleRulerControl extends Region {
     private final DoubleProperty preferredWidthPixels = new SimpleDoubleProperty(DEFAULT_PREFERRED_WIDTH);
 
     /**
-     * Creates a scale ruler control without a map view. Use {@link #setMapView(MapView)} to bind it.
+     * Creates a scale ruler control without a map view. Use
+     * {@link #setMapView(MapView)} to bind it.
      */
     public ScaleRulerControl() {
         this(null);
@@ -155,7 +157,7 @@ public final class ScaleRulerControl extends Region {
         gc.clearRect(0, 0, width, height);
 
         double centerLat = mapView.getCenterLat();
-        int zoomLevel = Math.max(0, (int) Math.floor(mapView.getZoom()));
+        int zoomLevel = mapView.getDiscreteZoomLevel();
 
         // Calculate meters per pixel at center
         double mpp = DistanceUtils.metersPerPixel(centerLat, zoomLevel);
@@ -176,14 +178,14 @@ public final class ScaleRulerControl extends Region {
         double barY = height - BAR_HEIGHT;
         int segments = 4; // Number of segments in the ruler
         double segmentWidth = actualWidth / segments;
-        
+
         for (int i = 0; i < segments; i++) {
             double x = i * segmentWidth;
             // Alternate between black and white
             gc.setFill(i % 2 == 0 ? Color.BLACK : Color.WHITE);
             gc.fillRect(x, barY, segmentWidth, BAR_HEIGHT);
         }
-        
+
         // Draw border around the ruler
         gc.setStroke(Color.BLACK);
         gc.setLineWidth(2.0);
@@ -197,11 +199,11 @@ public final class ScaleRulerControl extends Region {
         double textHeight = text.getLayoutBounds().getHeight();
         double textX = (actualWidth - textWidth) / 2.0;
         double textY = barY - TEXT_PADDING;
-        
+
         // White background behind text
         gc.setFill(Color.WHITE);
         gc.fillRect(textX - 2, textY - textHeight, textWidth + 4, textHeight + 2);
-        
+
         // Black text
         gc.setFill(Color.BLACK);
         gc.fillText(label, textX, textY);

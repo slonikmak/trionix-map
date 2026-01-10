@@ -12,11 +12,19 @@ import javafx.scene.paint.Color;
 
 /**
  * A layer that renders a metric grid overlay on the map for scale reference.
- * The grid spacing matches the scale ruler distance and is displayed in screen space,
- * making it easier to perceive distances visually. Grid cells represent equal distances
+ * The grid spacing matches the scale ruler distance and is displayed in screen
+ * space,
+ * making it easier to perceive distances visually. Grid cells represent equal
+ * distances
  * in meters/kilometers (e.g., 10km x 10km cells).
  */
 public final class GridLayer extends MapLayer {
+
+    /**
+     * Target width in pixels for calculating grid spacing.
+     * Matches the scale ruler target width.
+     */
+    private static final double GRID_SPACING_TARGET_WIDTH_PIXELS = 150.0;
 
     private final Canvas canvas = new Canvas();
 
@@ -101,7 +109,7 @@ public final class GridLayer extends MapLayer {
         gc.clearRect(0, 0, width, height);
 
         double centerLat = mapView.getCenterLat();
-        int zoomLevel = Math.max(0, (int) Math.floor(mapView.getZoom()));
+        int zoomLevel = mapView.getDiscreteZoomLevel();
 
         // Set stroke style
         gc.setStroke(getStrokeColor());
@@ -109,9 +117,9 @@ public final class GridLayer extends MapLayer {
 
         // Calculate grid spacing in pixels based on scale ruler distance
         double mpp = DistanceUtils.metersPerPixel(centerLat, zoomLevel);
-        double targetMeters = mpp * 150; // Match scale ruler width
+        double targetMeters = mpp * GRID_SPACING_TARGET_WIDTH_PIXELS;
         double niceMeters = DistanceUtils.getNiceDistance(targetMeters);
-        
+
         // Convert nice distance to pixels
         double gridSpacingPixels = niceMeters / mpp;
 

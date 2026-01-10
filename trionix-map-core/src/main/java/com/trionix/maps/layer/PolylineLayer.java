@@ -15,17 +15,16 @@ import javafx.scene.Node;
 import javafx.scene.input.MouseEvent;
 
 /**
- * A layer that renders polylines on the map. Supports custom styling, vertex markers, and interactive editing.
+ * A layer that renders polylines on the map. Supports custom styling, vertex
+ * markers, and interactive editing.
  */
 public final class PolylineLayer extends MapLayer {
 
     private final ObservableList<com.trionix.maps.layer.Polyline> polylines = FXCollections.observableArrayList();
     private final Map<com.trionix.maps.layer.Polyline, PolylineVisual> visuals = new HashMap<>();
-    private final Projection projection = new WebMercatorProjection();
+    private final Projection projection = WebMercatorProjection.INSTANCE;
 
     private Node draggingNode;
-    private com.trionix.maps.layer.Polyline draggingPolyline;
-    private int draggingVertexIndex = -1;
 
     public PolylineLayer() {
         polylines.addListener((ListChangeListener<com.trionix.maps.layer.Polyline>) change -> {
@@ -61,91 +60,125 @@ public final class PolylineLayer extends MapLayer {
 
     @Override
     public void layoutLayer(MapView mapView) {
-        int zoomLevel = Math.max(0, (int) Math.floor(mapView.getZoom()));
-        Projection.PixelCoordinate centerPixels = projection.latLonToPixel(
-                mapView.getCenterLat(), mapView.getCenterLon(), zoomLevel);
-        double halfWidth = mapView.getWidth() / 2.0;
-        double halfHeight = mapView.getHeight() / 2.0;
+        LayoutContext ctx = createLayoutContext(mapView);
+        if (ctx == null) {
+            return;
+        }
 
         for (com.trionix.maps.layer.Polyline polyline : polylines) {
             PolylineVisual visual = visuals.get(polyline);
             if (visual == null) {
-                continue; // Should have been created by listener
+                continue;
             }
 
-            // Update style
-            visual.lineNode.setStroke(polyline.getStrokeColor());
-            visual.lineNode.setStrokeWidth(polyline.getStrokeWidth());
-            visual.lineNode.getStrokeDashArray().setAll(polyline.getStrokeDashArray());
-
-            // Update points
-            List<GeoPoint> points = polyline.getPoints();
-            visual.lineNode.getPoints().clear();
-            
-            // Rebuild markers if needed (count mismatch or visibility change)
-            boolean markersNeeded = polyline.isMarkersVisible() || polyline.isEditable();
-            if (!markersNeeded) {
-                for (Node m : visual.markerNodes) {
-                    getChildren().remove(m);
-                }
-                visual.markerNodes.clear();
-            } else {
-                // If count differs, rebuild all (simplest approach)
-                if (visual.markerNodes.size() != points.size()) {
-                    for (Node m : visual.markerNodes) {
-                        getChildren().remove(m);
-                    }
-                    visual.markerNodes.clear();
-                    for (int i = 0; i < points.size(); i++) {
-                        Node markerNode = polyline.getMarkerFactory().apply(points.get(i));
-                        markerNode.setManaged(false);
-                        installMarkerHandlers(markerNode, polyline, i);
-                        visual.markerNodes.add(markerNode);
-                        getChildren().add(markerNode);
-                    }
-                }
-            }
-
-            // Position points and markers
-            for (int i = 0; i < points.size(); i++) {
-                GeoPoint gp = points.get(i);
-                Projection.PixelCoordinate pixel = projection.latLonToPixel(
-                        gp.latitude(), gp.longitude(), zoomLevel);
-                double screenX = pixel.x() - centerPixels.x() + halfWidth;
-                double screenY = pixel.y() - centerPixels.y() + halfHeight;
-
-                visual.lineNode.getPoints().addAll(screenX, screenY);
-
-                if (markersNeeded && i < visual.markerNodes.size()) {
-                    Node markerNode = visual.markerNodes.get(i);
-                    // Update marker visibility based on polyline state
-                    // If editable but markers not visible, we might still want to show handles?
-                    // Spec says: "WHEN a Polyline is set to non-editable ... markers (if visible) do not respond"
-                    // Spec also says: "Enable vertex markers ... visual marker is rendered"
-                    // So if markersVisible=false but editable=true, do we show markers?
-                    // Usually yes, as handles. But let's stick to markersVisible flag for visibility.
-                    // Wait, if editable=true and markersVisible=false, user can't see what to drag.
-                    // I'll assume markers must be visible to be dragged, OR editable implies visible handles.
-                    // Let's respect markersVisible for now. If user wants editable, they should probably enable markers or I should force them.
-                    // But spec separates them.
-                    // Let's show markers if markersVisible is true.
-                    
-                    // show vertex handles when either markers are requested or the polyline is editable
-                    boolean showHandle = polyline.isMarkersVisible() || polyline.isEditable();
-                    markerNode.setVisible(showHandle);
-                    // allow mouse interactions only when editable so handles don't intercept clicks otherwise
-                    markerNode.setMouseTransparent(!polyline.isEditable());
-                    
-                    if (markerNode.isVisible()) {
-                        double w = markerNode.prefWidth(-1);
-                        double h = markerNode.prefHeight(-1);
-                        markerNode.resizeRelocate(screenX - w / 2.0, screenY - h / 2.0, w, h);
-                    }
-                }
-            }
-            
-            // Ensure line is at the bottom of this layer's children so markers are on top
+            updateVisualStyle(polyline, visual);
+            updateMarkers(polyline, visual);
+            updateLinePoints(polyline, visual, ctx);
             visual.lineNode.toBack();
+        }
+    }
+
+    private record LayoutContext(
+            int zoomLevel,
+            double centerX,
+            double centerY,
+            double halfWidth,
+            double halfHeight,
+            Projection projection) {
+    }
+
+    private LayoutContext createLayoutContext(MapView mapView) {
+        if (mapView.getWidth() <= 0 || mapView.getHeight() <= 0) {
+            return null;
+        }
+        int zoomLevel = mapView.getDiscreteZoomLevel();
+        Projection.PixelCoordinate centerPixels = projection.latLonToPixel(
+                mapView.getCenterLat(), mapView.getCenterLon(), zoomLevel);
+        return new LayoutContext(
+                zoomLevel,
+                centerPixels.x(),
+                centerPixels.y(),
+                mapView.getWidth() / 2.0,
+                mapView.getHeight() / 2.0,
+                projection);
+    }
+
+    private void updateVisualStyle(com.trionix.maps.layer.Polyline polyline, PolylineVisual visual) {
+        visual.lineNode.setStroke(polyline.getStrokeColor());
+        visual.lineNode.setStrokeWidth(polyline.getStrokeWidth());
+        visual.lineNode.getStrokeDashArray().setAll(polyline.getStrokeDashArray());
+    }
+
+    private void updateMarkers(com.trionix.maps.layer.Polyline polyline, PolylineVisual visual) {
+        boolean markersNeeded = polyline.isMarkersVisible() || polyline.isEditable();
+        List<GeoPoint> points = polyline.getPoints();
+
+        if (!markersNeeded) {
+            removeAllMarkers(visual);
+            return;
+        }
+
+        if (visual.markerNodes.size() != points.size()) {
+            rebuildMarkers(polyline, visual, points);
+        }
+    }
+
+    private void removeAllMarkers(PolylineVisual visual) {
+        for (Node m : visual.markerNodes) {
+            getChildren().remove(m);
+        }
+        visual.markerNodes.clear();
+    }
+
+    private void rebuildMarkers(com.trionix.maps.layer.Polyline polyline, PolylineVisual visual,
+            List<GeoPoint> points) {
+        removeAllMarkers(visual);
+        for (int i = 0; i < points.size(); i++) {
+            Node markerNode = polyline.getMarkerFactory().apply(points.get(i));
+            markerNode.setManaged(false);
+            installMarkerHandlers(markerNode, polyline, i);
+            visual.markerNodes.add(markerNode);
+            getChildren().add(markerNode);
+        }
+    }
+
+    private void updateLinePoints(com.trionix.maps.layer.Polyline polyline, PolylineVisual visual,
+            LayoutContext ctx) {
+        List<GeoPoint> points = polyline.getPoints();
+        visual.lineNode.getPoints().clear();
+
+        boolean markersNeeded = polyline.isMarkersVisible() || polyline.isEditable();
+
+        for (int i = 0; i < points.size(); i++) {
+            GeoPoint gp = points.get(i);
+            double[] screenPos = toScreenPosition(gp, ctx);
+
+            visual.lineNode.getPoints().addAll(screenPos[0], screenPos[1]);
+
+            if (markersNeeded && i < visual.markerNodes.size()) {
+                positionMarker(visual.markerNodes.get(i), screenPos, polyline);
+            }
+        }
+    }
+
+    private double[] toScreenPosition(GeoPoint gp, LayoutContext ctx) {
+        Projection.PixelCoordinate pixel = ctx.projection().latLonToPixel(
+                gp.latitude(), gp.longitude(), ctx.zoomLevel());
+        double screenX = pixel.x() - ctx.centerX() + ctx.halfWidth();
+        double screenY = pixel.y() - ctx.centerY() + ctx.halfHeight();
+        return new double[] { screenX, screenY };
+    }
+
+    private void positionMarker(Node markerNode, double[] screenPos,
+            com.trionix.maps.layer.Polyline polyline) {
+        boolean showHandle = polyline.isMarkersVisible() || polyline.isEditable();
+        markerNode.setVisible(showHandle);
+        markerNode.setMouseTransparent(!polyline.isEditable());
+
+        if (markerNode.isVisible()) {
+            double w = markerNode.prefWidth(-1);
+            double h = markerNode.prefHeight(-1);
+            markerNode.resizeRelocate(screenPos[0] - w / 2.0, screenPos[1] - h / 2.0, w, h);
         }
     }
 
@@ -171,8 +204,6 @@ public final class PolylineLayer extends MapLayer {
                 return;
             }
             draggingNode = node;
-            draggingPolyline = polyline;
-            draggingVertexIndex = index;
             ev.consume();
         });
 
@@ -184,27 +215,16 @@ public final class PolylineLayer extends MapLayer {
             if (view == null) {
                 return;
             }
-            
-            var local = view.sceneToLocal(ev.getSceneX(), ev.getSceneY());
-            int zoomLevel = Math.max(0, (int) Math.floor(view.getZoom()));
-            Projection.PixelCoordinate centerPixels = projection.latLonToPixel(
-                    view.getCenterLat(), view.getCenterLon(), zoomLevel);
-            double offsetX = local.getX() - view.getWidth() / 2.0;
-            double offsetY = local.getY() - view.getHeight() / 2.0;
-            double pixelX = centerPixels.x() + offsetX;
-            double pixelY = centerPixels.y() + offsetY;
-            var latlon = projection.pixelToLatLon(pixelX, pixelY, zoomLevel);
-            
-            GeoPoint newPoint = GeoPoint.of(latlon.latitude(), latlon.longitude());
-            polyline.updatePoint(index, newPoint);
+            GeoPoint geo = view.sceneToGeoPoint(ev.getSceneX(), ev.getSceneY());
+            if (geo != null) {
+                polyline.updatePoint(index, geo);
+            }
             ev.consume();
         });
 
         node.addEventHandler(MouseEvent.MOUSE_RELEASED, ev -> {
             if (draggingNode == node) {
                 draggingNode = null;
-                draggingPolyline = null;
-                draggingVertexIndex = -1;
                 ev.consume();
             }
         });

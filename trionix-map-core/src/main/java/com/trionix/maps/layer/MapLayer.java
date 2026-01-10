@@ -1,13 +1,17 @@
 package com.trionix.maps.layer;
 
 import com.trionix.maps.MapView;
+import com.trionix.maps.internal.projection.Projection;
+import com.trionix.maps.internal.projection.WebMercatorProjection;
 import java.util.Objects;
 import javafx.application.Platform;
 import javafx.scene.layout.Pane;
 
 /**
- * Base class for custom overlays rendered above {@link MapView} tiles. Subclasses must perform
- * all scene-graph mutations from the JavaFX Application Thread and should minimize work inside
+ * Base class for custom overlays rendered above {@link MapView} tiles.
+ * Subclasses must perform
+ * all scene-graph mutations from the JavaFX Application Thread and should
+ * minimize work inside
  * {@link #layoutLayer(MapView)} to keep map rendering smooth.
  */
 public abstract class MapLayer extends Pane {
@@ -15,7 +19,8 @@ public abstract class MapLayer extends Pane {
     private MapView mapView;
 
     /**
-     * Creates a layer with unmanaged layout so the {@link MapView} can control its bounds.
+     * Creates a layer with unmanaged layout so the {@link MapView} can control its
+     * bounds.
      */
     protected MapLayer() {
         setManaged(false);
@@ -23,21 +28,25 @@ public abstract class MapLayer extends Pane {
     }
 
     /**
-     * Called once per JavaFX pulse to layout the layer relative to the current map state. This
+     * Called once per JavaFX pulse to layout the layer relative to the current map
+     * state. This
      * method always executes on the JavaFX Application Thread.
      */
     public abstract void layoutLayer(MapView mapView);
 
     /**
-     * Lifecycle hook invoked when the layer is added to a {@link MapView}. Subclasses typically use
-     * this hook to initialize resources; the call occurs on the JavaFX Application Thread.
+     * Lifecycle hook invoked when the layer is added to a {@link MapView}.
+     * Subclasses typically use
+     * this hook to initialize resources; the call occurs on the JavaFX Application
+     * Thread.
      */
     public void layerAdded(MapView mapView) {
         // no-op by default
     }
 
     /**
-     * Lifecycle hook invoked when the layer is removed from a {@link MapView}. Default is no-op and
+     * Lifecycle hook invoked when the layer is removed from a {@link MapView}.
+     * Default is no-op and
      * the call occurs on the JavaFX Application Thread.
      */
     public void layerRemoved(MapView mapView) {
@@ -45,7 +54,8 @@ public abstract class MapLayer extends Pane {
     }
 
     /**
-     * Requests that {@link #layoutLayer(MapView)} be called on the next JavaFX pulse. The request is
+     * Requests that {@link #layoutLayer(MapView)} be called on the next JavaFX
+     * pulse. The request is
      * marshalled to the JavaFX Application Thread if necessary.
      */
     public final void requestLayerLayout() {
@@ -62,7 +72,17 @@ public abstract class MapLayer extends Pane {
     }
 
     /**
-     * Returns the {@link MapView} this layer is currently attached to, or {@code null} if the layer
+     * Returns the projection from the attached MapView, or the default Web Mercator
+     * projection if the layer is not attached.
+     */
+    protected final Projection getProjection() {
+        MapView view = getMapView();
+        return view != null ? view.getProjection() : WebMercatorProjection.INSTANCE;
+    }
+
+    /**
+     * Returns the {@link MapView} this layer is currently attached to, or
+     * {@code null} if the layer
      * has not been added to a map.
      */
     public final MapView getMapView() {
@@ -70,7 +90,8 @@ public abstract class MapLayer extends Pane {
     }
 
     /**
-     * Internal hook used by {@link MapView} to register ownership. Not intended for user code.
+     * Internal hook used by {@link MapView} to register ownership. Not intended for
+     * user code.
      */
     public final void attachToMapView(MapView mapView) {
         Objects.requireNonNull(mapView, "mapView");
@@ -81,7 +102,8 @@ public abstract class MapLayer extends Pane {
     }
 
     /**
-     * Internal hook used by {@link MapView} to clear ownership. Not intended for user code.
+     * Internal hook used by {@link MapView} to clear ownership. Not intended for
+     * user code.
      */
     public final void detachFromMapView(MapView mapView) {
         if (this.mapView == mapView) {
