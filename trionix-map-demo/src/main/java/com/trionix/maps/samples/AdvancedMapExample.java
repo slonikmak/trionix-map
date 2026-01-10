@@ -36,7 +36,8 @@ import java.util.Map;
 
 /**
  * Переработанный пример с функционалом:
- * - Маркеры: добавление, перемещение, удаление, редактирование (цвет/текст), список.
+ * - Маркеры: добавление, перемещение, удаление, редактирование (цвет/текст),
+ * список.
  * - Линии: рисование, редактирование, удаление, список, цвет.
  */
 public final class AdvancedMapExample extends Application {
@@ -62,6 +63,7 @@ public final class AdvancedMapExample extends Application {
         ADD_MARKER,
         DRAW_LINE
     }
+
     private InteractionMode currentMode = InteractionMode.NONE;
 
     // UI Controls
@@ -90,6 +92,7 @@ public final class AdvancedMapExample extends Application {
     private static class MarkerData {
         String name;
         Color color;
+
         MarkerData(String name, Color color) {
             this.name = name;
             this.color = color;
@@ -98,12 +101,13 @@ public final class AdvancedMapExample extends Application {
 
     @Override
     public void start(Stage stage) {
-        // Use a tiered cache (L1 memory -> L2 disk) for better performance and persistence.
+        // Use a tiered cache (L1 memory -> L2 disk) for better performance and
+        // persistence.
         Path cacheDir = Path.of(System.getProperty("user.home"), ".trionix", "tiles");
         TileCache cache = TileCacheBuilder.create()
-            .memory(500)
-            .disk(cacheDir, 10_000)
-            .build();
+                .memory(500)
+                .disk(cacheDir, 10_000)
+                .build();
 
         mapView = new MapView(new SimpleOsmTileRetriever(), cache);
         mapView.setPrefSize(1200.0, 800.0);
@@ -111,7 +115,8 @@ public final class AdvancedMapExample extends Application {
         mapView.setCenterLon(37.6173);
         mapView.setZoom(10.0);
 
-        // Note: input zooms are instantaneous in the current runtime (no in-flight zoom animations)
+        // Note: input zooms are instantaneous in the current runtime (no in-flight zoom
+        // animations)
 
         markerLayer = new PointMarkerLayer();
         polylineLayer = new PolylineLayer();
@@ -157,184 +162,297 @@ public final class AdvancedMapExample extends Application {
         stage.show();
     }
 
-    private Node createControlPanel() {
-        // Compact right-hand control column. Put content into a ScrollPane so it scrolls when taller than window.
-        VBox panel = new VBox(8);
-        panel.setPadding(new Insets(10));
-        panel.setPrefWidth(300);
-        // Ensure the panel text is black so items are readable on the light background
-        panel.setStyle("-fx-background-color: #f5f5f5; -fx-text-fill: black; -fx-font-size: 12px;");
+    // --- UI Labels with counters ---
+    private Label markersHeaderLabel;
+    private Label linesHeaderLabel;
 
-        // --- Modes ---
-        Label modesLabel = new Label("Режимы");
-        modesLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14;");
+    // --- Placeholder labels ---
+    private Label markerPlaceholder;
+    private Label linePlaceholder;
+
+    private Node createControlPanel() {
+        VBox panel = new VBox(12);
+        panel.setPadding(new Insets(12));
+        panel.setPrefWidth(320);
+        panel.setStyle("-fx-background-color: #f8f9fa;");
+
+        // ==================== MODES SECTION ====================
+        VBox modesCard = createSectionCard();
+        Label modesLabel = createSectionHeader("🎯 Режимы");
 
         ToggleGroup modeGroup = new ToggleGroup();
-        addMarkerModeBtn = new ToggleButton("Добавить маркер");
+
+        addMarkerModeBtn = new ToggleButton("📍 Добавить маркер");
         addMarkerModeBtn.setToggleGroup(modeGroup);
         addMarkerModeBtn.setMaxWidth(Double.MAX_VALUE);
-        addMarkerModeBtn.setStyle("-fx-text-fill: black;");
+        addMarkerModeBtn.setTooltip(new Tooltip("Кликните на карту, чтобы добавить маркер"));
+        styleModeButton(addMarkerModeBtn);
 
-        drawLineModeBtn = new ToggleButton("Рисовать линию");
+        drawLineModeBtn = new ToggleButton("✏️ Рисовать линию");
         drawLineModeBtn.setToggleGroup(modeGroup);
         drawLineModeBtn.setMaxWidth(Double.MAX_VALUE);
-        drawLineModeBtn.setStyle("-fx-text-fill: black;");
+        drawLineModeBtn.setTooltip(new Tooltip("Кликайте на карту, чтобы добавлять точки линии"));
+        styleModeButton(drawLineModeBtn);
 
+        // Active mode styling
         modeGroup.selectedToggleProperty().addListener((obs, old, newToggle) -> {
+            // Reset old button style
+            if (old instanceof ToggleButton oldBtn) {
+                styleModeButton(oldBtn);
+            }
+
             if (newToggle == addMarkerModeBtn) {
                 currentMode = InteractionMode.ADD_MARKER;
                 finishDrawing();
+                styleActiveModeButton(addMarkerModeBtn);
             } else if (newToggle == drawLineModeBtn) {
                 currentMode = InteractionMode.DRAW_LINE;
                 startDrawing();
+                styleActiveModeButton(drawLineModeBtn);
             } else {
                 currentMode = InteractionMode.NONE;
                 finishDrawing();
             }
         });
 
-        // --- Markers ---
-        Label markersLabel = new Label("Маркеры");
-        markersLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14;");
+        HBox modeButtons = new HBox(8, addMarkerModeBtn, drawLineModeBtn);
+        HBox.setHgrow(addMarkerModeBtn, Priority.ALWAYS);
+        HBox.setHgrow(drawLineModeBtn, Priority.ALWAYS);
+
+        modesCard.getChildren().addAll(modesLabel, modeButtons);
+
+        // ==================== MARKERS SECTION ====================
+        VBox markersCard = createSectionCard();
+        markersHeaderLabel = createSectionHeader("📍 Маркеры (0)");
 
         markerListView = new ListView<>(markers);
-        markerListView.setPrefHeight(110);
+        markerListView.setPrefHeight(100);
         markerListView.setMaxWidth(Double.MAX_VALUE);
+        markerListView.setPlaceholder(new Label("Нет маркеров"));
+        markerListView.setTooltip(new Tooltip("Выберите маркер для редактирования"));
         markerListView.setCellFactory(lv -> new ListCell<>() {
             @Override
             protected void updateItem(PointMarker item, boolean empty) {
                 super.updateItem(item, empty);
-                setStyle("-fx-text-fill: black;");
+                setStyle("-fx-text-fill: #333;");
                 if (empty || item == null) {
                     setText(null);
+                    setGraphic(null);
                 } else {
                     MarkerData data = markerDataMap.get(item);
                     setText(data != null ? data.name : "Marker");
+                    Circle indicator = new Circle(6, data != null ? data.color : Color.RED);
+                    indicator.setStroke(Color.WHITE);
+                    indicator.setStrokeWidth(1.5);
+                    setGraphic(indicator);
                 }
             }
         });
         markerListView.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> selectMarker(sel));
 
-        // Marker Edit
+        // Update counter when markers change
+        markers.addListener((javafx.collections.ListChangeListener<PointMarker>) c -> {
+            markersHeaderLabel.setText("📍 Маркеры (" + markers.size() + ")");
+        });
+
+        // Marker Placeholder (shown when no marker selected)
+        markerPlaceholder = new Label("Выберите маркер для редактирования");
+        markerPlaceholder.setStyle("-fx-text-fill: #888; -fx-font-style: italic; -fx-padding: 8 0;");
+        markerPlaceholder.setMaxWidth(Double.MAX_VALUE);
+        markerPlaceholder.setAlignment(Pos.CENTER);
+
+        // Marker Edit Box
         markerEditBox = new VBox(8);
+        markerEditBox.setStyle(
+                "-fx-padding: 8; -fx-background-color: #fff; -fx-background-radius: 6; -fx-border-color: #e0e0e0; -fx-border-radius: 6;");
+
+        Label markerPropsLabel = new Label("Свойства маркера");
+        markerPropsLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #333; -fx-font-size: 11;");
+
         markerNameField = new TextField();
-        markerNameField.setMaxWidth(Double.MAX_VALUE);
-        markerNameField.setPromptText("Название");
+        markerNameField.setPromptText("Название маркера");
         markerNameField.setOnAction(e -> updateSelectedMarker());
-        markerNameField.setStyle("-fx-text-inner-color: black; -fx-text-fill: black;");
+        markerNameField.setTooltip(new Tooltip("Введите название и нажмите Enter"));
 
         markerColorPicker = new ColorPicker();
         markerColorPicker.setMaxWidth(Double.MAX_VALUE);
         markerColorPicker.setOnAction(e -> updateSelectedMarker());
+        markerColorPicker.setTooltip(new Tooltip("Выберите цвет маркера"));
 
-        deleteMarkerBtn = new Button("Удалить маркер");
+        // Compact row: name + color
+        HBox markerPropsRow = new HBox(8);
+        HBox.setHgrow(markerNameField, Priority.ALWAYS);
+        markerColorPicker.setPrefWidth(60);
+        markerPropsRow.getChildren().addAll(markerNameField, markerColorPicker);
+
+        deleteMarkerBtn = new Button("🗑️ Удалить");
         deleteMarkerBtn.setMaxWidth(Double.MAX_VALUE);
         deleteMarkerBtn.setOnAction(e -> deleteSelectedMarker());
-        deleteMarkerBtn.setStyle("-fx-text-fill: black;");
+        deleteMarkerBtn.setTooltip(new Tooltip("Удалить выбранный маркер"));
+        deleteMarkerBtn.setStyle(
+                "-fx-text-fill: #c0392b; -fx-background-color: #fdecea; -fx-border-color: #e74c3c; -fx-border-radius: 4; -fx-background-radius: 4;");
 
-        markerEditBox.getChildren().addAll(new Label("Свойства маркера:"), markerNameField, markerColorPicker, deleteMarkerBtn);
-        markerEditBox.setDisable(true);
+        markerEditBox.getChildren().addAll(markerPropsLabel, markerPropsRow, deleteMarkerBtn);
+        markerEditBox.setVisible(false);
+        markerEditBox.setManaged(false);
 
-        // --- Lines ---
-        Label linesLabel = new Label("Линии");
-        linesLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14;");
+        markersCard.getChildren().addAll(markersHeaderLabel, markerListView, markerPlaceholder, markerEditBox);
+
+        // ==================== LINES SECTION ====================
+        VBox linesCard = createSectionCard();
+        linesHeaderLabel = createSectionHeader("✏️ Линии (0)");
 
         polylineListView = new ListView<>(polylineLayer.getPolylines());
-        polylineListView.setPrefHeight(110);
+        polylineListView.setPrefHeight(100);
         polylineListView.setMaxWidth(Double.MAX_VALUE);
+        polylineListView.setPlaceholder(new Label("Нет линий"));
+        polylineListView.setTooltip(new Tooltip("Выберите линию для редактирования"));
         polylineListView.setCellFactory(lv -> new ListCell<>() {
             @Override
             protected void updateItem(Polyline item, boolean empty) {
                 super.updateItem(item, empty);
-            setStyle("-fx-text-fill: black;");
+                setStyle("-fx-text-fill: #333;");
                 if (empty || item == null) {
                     setText(null);
                     setGraphic(null);
                 } else {
                     setText("Линия " + (getIndex() + 1) + " (" + item.getPoints().size() + " точек)");
                     javafx.scene.shape.Rectangle r = new javafx.scene.shape.Rectangle(16, 10, item.getStrokeColor());
-                    r.setStroke(Color.BLACK);
+                    r.setStroke(Color.gray(0.3));
+                    r.setArcWidth(3);
+                    r.setArcHeight(3);
                     setGraphic(r);
                 }
             }
         });
         polylineListView.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> selectPolyline(sel));
 
-        // Line Edit
+        // Update counter when polylines change
+        polylineLayer.getPolylines().addListener((javafx.collections.ListChangeListener<Polyline>) c -> {
+            linesHeaderLabel.setText("✏️ Линии (" + polylineLayer.getPolylines().size() + ")");
+        });
+
+        // Line Placeholder
+        linePlaceholder = new Label("Выберите линию для редактирования");
+        linePlaceholder.setStyle("-fx-text-fill: #888; -fx-font-style: italic; -fx-padding: 8 0;");
+        linePlaceholder.setMaxWidth(Double.MAX_VALUE);
+        linePlaceholder.setAlignment(Pos.CENTER);
+
+        // Line Edit Box
         lineEditBox = new VBox(8);
+        lineEditBox.setStyle(
+                "-fx-padding: 8; -fx-background-color: #fff; -fx-background-radius: 6; -fx-border-color: #e0e0e0; -fx-border-radius: 6;");
+
+        Label linePropsLabel = new Label("Свойства линии");
+        linePropsLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #333; -fx-font-size: 11;");
+
         lineColorPicker = new ColorPicker();
         lineColorPicker.setMaxWidth(Double.MAX_VALUE);
         lineColorPicker.setOnAction(e -> updateSelectedLine());
+        lineColorPicker.setTooltip(new Tooltip("Выберите цвет линии"));
 
         lineEditableCheck = new CheckBox("Редактируемая");
+        lineEditableCheck.setStyle("-fx-text-fill: #333;");
+        lineEditableCheck.setTooltip(new Tooltip("Позволяет перетаскивать точки линии"));
         lineEditableCheck.setOnAction(e -> {
-            if (selectedPolyline != null) selectedPolyline.setEditable(lineEditableCheck.isSelected());
+            if (selectedPolyline != null)
+                selectedPolyline.setEditable(lineEditableCheck.isSelected());
         });
 
-        deleteLineBtn = new Button("Удалить линию");
+        // Compact row: color + editable
+        HBox linePropsRow = new HBox(8);
+        HBox.setHgrow(lineColorPicker, Priority.ALWAYS);
+        linePropsRow.setAlignment(Pos.CENTER_LEFT);
+        linePropsRow.getChildren().addAll(lineColorPicker, lineEditableCheck);
+
+        deleteLineBtn = new Button("🗑️ Удалить");
         deleteLineBtn.setMaxWidth(Double.MAX_VALUE);
         deleteLineBtn.setOnAction(e -> deleteSelectedLine());
-        deleteLineBtn.setStyle("-fx-text-fill: black;");
+        deleteLineBtn.setTooltip(new Tooltip("Удалить выбранную линию"));
+        deleteLineBtn.setStyle(
+                "-fx-text-fill: #c0392b; -fx-background-color: #fdecea; -fx-border-color: #e74c3c; -fx-border-radius: 4; -fx-background-radius: 4;");
 
-        lineEditBox.getChildren().addAll(new Label("Свойства линии:"), lineColorPicker, lineEditableCheck, deleteLineBtn);
-        lineEditBox.setDisable(true);
+        lineEditBox.getChildren().addAll(linePropsLabel, linePropsRow, deleteLineBtn);
+        lineEditBox.setVisible(false);
+        lineEditBox.setManaged(false);
 
-        // --- Grid and Ruler Controls ---
-        Label overlaysLabel = new Label("Наложения");
-        overlaysLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14;");
+        linesCard.getChildren().addAll(linesHeaderLabel, polylineListView, linePlaceholder, lineEditBox);
 
-        CheckBox gridVisibleCheck = new CheckBox("Показать сетку координат");
+        // ==================== OVERLAYS SECTION ====================
+        VBox overlaysCard = createSectionCard();
+        Label overlaysLabel = createSectionHeader("🗺️ Наложения");
+
+        // Grid row: checkbox + color picker
+        CheckBox gridVisibleCheck = new CheckBox("Сетка координат");
         gridVisibleCheck.setSelected(gridLayer.isVisible());
+        gridVisibleCheck.setStyle("-fx-text-fill: #333;");
+        gridVisibleCheck.setTooltip(new Tooltip("Показать/скрыть сетку координат на карте"));
         gridVisibleCheck.setOnAction(e -> gridLayer.setVisible(gridVisibleCheck.isSelected()));
 
-        CheckBox rulerVisibleCheck = new CheckBox("Показать линейку масштаба");
-        rulerVisibleCheck.setSelected(scaleRuler.isVisible());
-        rulerVisibleCheck.setOnAction(e -> scaleRuler.setVisible(rulerVisibleCheck.isSelected()));
-
         ColorPicker gridColorPicker = new ColorPicker(gridLayer.getStrokeColor());
-        gridColorPicker.setMaxWidth(Double.MAX_VALUE);
+        gridColorPicker.setPrefWidth(60);
+        gridColorPicker.setTooltip(new Tooltip("Цвет сетки координат"));
         gridColorPicker.setOnAction(e -> gridLayer.setStrokeColor(gridColorPicker.getValue()));
 
-        // Ensure checkboxes and label text are black for all themes
-        gridVisibleCheck.setStyle("-fx-text-fill: black;");
-        rulerVisibleCheck.setStyle("-fx-text-fill: black;");
+        HBox gridRow = new HBox(8);
+        gridRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(gridVisibleCheck, Priority.ALWAYS);
+        gridRow.getChildren().addAll(gridVisibleCheck, gridColorPicker);
 
-        panel.getChildren().addAll(
-            modesLabel,
-            addMarkerModeBtn,
-            drawLineModeBtn,
-            new Separator(),
-            markersLabel,
-            markerListView,
-            markerEditBox,
-            new Separator(),
-            linesLabel,
-            polylineListView,
-            lineEditBox,
-            new Separator(),
-            overlaysLabel,
-            gridVisibleCheck,
-            rulerVisibleCheck,
-            new Label("Цвет сетки:"),
-            gridColorPicker
-        );
+        // Ruler row
+        CheckBox rulerVisibleCheck = new CheckBox("Линейка масштаба");
+        rulerVisibleCheck.setSelected(scaleRuler.isVisible());
+        rulerVisibleCheck.setStyle("-fx-text-fill: #333;");
+        rulerVisibleCheck.setTooltip(new Tooltip("Показать/скрыть линейку масштаба"));
+        rulerVisibleCheck.setOnAction(e -> scaleRuler.setVisible(rulerVisibleCheck.isSelected()));
 
-        // Make the column scrollable when content is taller than available window height
+        overlaysCard.getChildren().addAll(overlaysLabel, gridRow, rulerVisibleCheck);
+
+        // ==================== ASSEMBLE PANEL ====================
+        panel.getChildren().addAll(modesCard, markersCard, linesCard, overlaysCard);
+
+        // Scrollable container
         ScrollPane scroll = new ScrollPane(panel);
         scroll.setFitToWidth(true);
         scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         scroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        scroll.setPrefWidth(panel.getPrefWidth());
-        scroll.setStyle("-fx-background: transparent; -fx-background-color: transparent;");
+        scroll.setPrefWidth(panel.getPrefWidth() + 20);
+        scroll.setStyle("-fx-background: #f8f9fa; -fx-background-color: #f8f9fa;");
 
         return scroll;
     }
 
+    private VBox createSectionCard() {
+        VBox card = new VBox(8);
+        card.setPadding(new Insets(12));
+        card.setStyle(
+                "-fx-background-color: white; -fx-background-radius: 8; -fx-border-color: #e0e0e0; -fx-border-radius: 8; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 4, 0, 0, 1);");
+        return card;
+    }
+
+    private Label createSectionHeader(String text) {
+        Label label = new Label(text);
+        label.setStyle("-fx-font-weight: bold; -fx-font-size: 13; -fx-text-fill: #2c3e50;");
+        return label;
+    }
+
+    private void styleModeButton(ToggleButton btn) {
+        btn.setStyle(
+                "-fx-background-color: #ecf0f1; -fx-text-fill: #2c3e50; -fx-background-radius: 6; -fx-border-radius: 6; -fx-border-color: #bdc3c7; -fx-cursor: hand;");
+    }
+
+    private void styleActiveModeButton(ToggleButton btn) {
+        btn.setStyle(
+                "-fx-background-color: #3498db; -fx-text-fill: white; -fx-background-radius: 6; -fx-border-radius: 6; -fx-border-color: #2980b9; -fx-font-weight: bold;");
+    }
+
     private void handleMapClick(MouseEvent ev) {
-        if (ev.getButton() != MouseButton.PRIMARY || !ev.isStillSincePress()) return;
+        if (ev.getButton() != MouseButton.PRIMARY || !ev.isStillSincePress())
+            return;
 
         // Check if we clicked on a marker (if so, don't add another one)
-        // But here we are on the MapView level. If the marker consumed the event, we wouldn't be here?
+        // But here we are on the MapView level. If the marker consumed the event, we
+        // wouldn't be here?
         // Actually, let's rely on the mode.
 
         GeoPoint loc = getClickLocation(ev);
@@ -369,9 +487,10 @@ public final class AdvancedMapExample extends Application {
 
         marker.setOnClick(m -> {
             markerListView.getSelectionModel().select(m);
-            // Note: we don't consume the event here explicitly, but usually the layer handles it.
+            // Note: we don't consume the event here explicitly, but usually the layer
+            // handles it.
         });
-        
+
         // Select the new marker
         markerListView.getSelectionModel().select(marker);
     }
@@ -381,14 +500,15 @@ public final class AdvancedMapExample extends Application {
         box.setAlignment(Pos.CENTER);
         // Label at index 0
         Label l = new Label(name);
-        l.setStyle("-fx-background-color: rgba(255,255,255,0.9); -fx-padding: 2px 4px; -fx-font-size: 11px; -fx-background-radius: 4; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.4), 2, 0, 0, 1);");
-        
+        l.setStyle(
+                "-fx-background-color: rgba(255,255,255,0.9); -fx-padding: 2px 4px; -fx-font-size: 11px; -fx-background-radius: 4; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.4), 2, 0, 0, 1);");
+
         // Circle at index 1
         Circle c = new Circle(8, color);
         c.setStroke(Color.WHITE);
         c.setStrokeWidth(2);
         c.setEffect(new javafx.scene.effect.DropShadow(3, Color.gray(0.5)));
-        
+
         box.getChildren().addAll(l, c);
         return box;
     }
@@ -397,7 +517,11 @@ public final class AdvancedMapExample extends Application {
         selectedMarker = marker;
         boolean hasSelection = (marker != null);
 
-        markerEditBox.setDisable(!hasSelection);
+        // Toggle visibility: show edit box when selected, placeholder when not
+        markerEditBox.setVisible(hasSelection);
+        markerEditBox.setManaged(hasSelection);
+        markerPlaceholder.setVisible(!hasSelection);
+        markerPlaceholder.setManaged(!hasSelection);
 
         if (hasSelection) {
             MarkerData data = markerDataMap.get(marker);
@@ -406,15 +530,14 @@ public final class AdvancedMapExample extends Application {
                 markerColorPicker.setValue(data.color);
             }
 
-            // Center map
+            // Animate to marker location
             mapView.flyTo(marker.getLatitude(), marker.getLongitude(), mapView.getZoom(), Duration.seconds(0.5));
-            
-            // Highlight visual (optional, could add a border to the node)
         }
     }
 
     private void updateSelectedMarker() {
-        if (selectedMarker == null) return;
+        if (selectedMarker == null)
+            return;
         String name = markerNameField.getText();
         Color color = markerColorPicker.getValue();
 
@@ -452,7 +575,8 @@ public final class AdvancedMapExample extends Application {
         currentDrawingPolyline.setStrokeWidth(4);
         currentDrawingPolyline.setEditable(true);
         polylineLayer.addPolyline(currentDrawingPolyline);
-        // polylineLayer.getPolylines() is observable, so list view updates automatically
+        // polylineLayer.getPolylines() is observable, so list view updates
+        // automatically
         polylineListView.getSelectionModel().select(currentDrawingPolyline);
     }
 
@@ -469,7 +593,12 @@ public final class AdvancedMapExample extends Application {
     private void selectPolyline(Polyline polyline) {
         selectedPolyline = polyline;
         boolean hasSelection = (polyline != null);
-        lineEditBox.setDisable(!hasSelection);
+
+        // Toggle visibility: show edit box when selected, placeholder when not
+        lineEditBox.setVisible(hasSelection);
+        lineEditBox.setManaged(hasSelection);
+        linePlaceholder.setVisible(!hasSelection);
+        linePlaceholder.setManaged(!hasSelection);
 
         if (hasSelection) {
             lineColorPicker.setValue(polyline.getStrokeColor());

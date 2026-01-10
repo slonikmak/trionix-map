@@ -7,7 +7,6 @@
         <groupId>com.trionix</groupId>
         <artifactId>trionix-map</artifactId>
         <version>0.1.0-SNAPSHOT</version>
-        <relativePath>..</relativePath>
     </parent>
 
     <artifactId>trionix-map-core</artifactId>

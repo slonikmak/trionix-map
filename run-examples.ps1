@@ -9,7 +9,7 @@ Write-Host "Запуск продвинутого примера (AdvancedMapExa
 # The demo module has a convenience profile (`run-demo`) which sets the default main class.
 # This avoids shell quoting issues with -Djavafx.mainClass on some platforms.
 # Ensure the core library is available on the local repo/classpath for the demo run
-mvn -pl trionix-map-core -am -DskipTests=true install
+# mvn -pl trionix-map-core -am -DskipTests=true install
 
 # Now run the demo using the JavaFX plugin configured in the demo module's run-demo profile
 mvn -f trionix-map-demo/pom.xml -Prun-demo javafx:run
