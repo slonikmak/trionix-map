@@ -37,6 +37,20 @@ jobs:
             exit 1
           fi
 
+      - name: Test package token authentication
+        run: |
+          echo "Testing token authentication against GitHub API"
+          TOKEN="${{ secrets.MAVEN_TOKEN || secrets.GITHUB_TOKEN }}"
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" https://api.github.com/user || true)
+          if [ "$HTTP_CODE" = "200" ]; then
+            LOGIN=$(curl -s -H "Authorization: Bearer $TOKEN" https://api.github.com/user | sed -n 's/.*"login": "\([^"]*\)".*/\1/p')
+            echo "Token valid for user: $LOGIN"
+          else
+            echo "Token auth failed (HTTP $HTTP_CODE)"
+            echo "If this is 401/403: check repo Actions permissions, add repo to package's 'Manage Actions access' or provide a PAT in secret 'MAVEN_TOKEN' with 'write:packages' scope."
+            exit 1
+          fi
+
       - name: Build and Publish to GitHub Packages
         run: mvn -s "${{ github.workspace }}/settings.xml" -B deploy -DskipTests=true
         env:
