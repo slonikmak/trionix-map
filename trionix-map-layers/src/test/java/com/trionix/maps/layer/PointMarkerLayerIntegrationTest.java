@@ -9,7 +9,6 @@ import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.Region;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 
 class PointMarkerLayerIntegrationTest {
 

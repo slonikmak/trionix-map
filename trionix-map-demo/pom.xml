@@ -25,6 +25,13 @@
             <version>${project.version}</version>
         </dependency>
 
+
+        <dependency>
+            <groupId>com.trionix</groupId>
+            <artifactId>trionix-map-layers</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- JavaFX with compile scope and platform classifier for runnable demos -->
         <dependency>
             <groupId>org.openjfx</groupId>

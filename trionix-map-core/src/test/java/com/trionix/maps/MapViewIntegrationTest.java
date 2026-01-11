@@ -30,10 +30,10 @@ class MapViewIntegrationTest {
 
     @Test
     void requestsVisibleTilesWhenViewportSized() throws Exception {
-        RecordingTileRetriever retriever = new RecordingTileRetriever();
-        InMemoryTileCache cache = new InMemoryTileCache(256);
+        var retriever = new RecordingTileRetriever();
+        var cache = new InMemoryTileCache(256);
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(
+        try (var mounted = MapViewTestHarness.mount(
                 () -> new MapView(retriever, cache),
                 512,
                 512,
@@ -44,19 +44,19 @@ class MapViewIntegrationTest {
                 })) {
             mounted.layout();
 
-            MapState expectedState = new MapState();
+            var expectedState = new MapState();
             expectedState.setCenterLat(37.7749);
             expectedState.setCenterLon(-122.4194);
             expectedState.setZoom(3.0);
             expectedState.setViewportSize(512.0, 512.0);
-            List<TileCoordinate> expectedTiles = expectedState.visibleTiles();
+            var expectedTiles = expectedState.visibleTiles();
 
-                List<LoadRequest> requests = retriever.awaitRequests(expectedTiles.size(), Duration.ofSeconds(1));
-                assertThat(requests)
+            var requests = retriever.awaitRequests(expectedTiles.size(), Duration.ofSeconds(1));
+            assertThat(requests)
                     .extracting(LoadRequest::coordinate)
                     .containsExactlyInAnyOrderElementsOf(expectedTiles);
 
-            WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
+            var tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
             requests.forEach(request -> request.future().complete(tileImage));
             mounted.flushFx();
         }
@@ -64,28 +64,28 @@ class MapViewIntegrationTest {
 
     @Test
     void rendersPlaceholderWhenTileLoadFails() throws Exception {
-        RecordingTileRetriever retriever = new RecordingTileRetriever();
-        InMemoryTileCache cache = new InMemoryTileCache(32);
+        var retriever = new RecordingTileRetriever();
+        var cache = new InMemoryTileCache(32);
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 256, 256)) {
+        try (var mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 256, 256)) {
             mounted.layout();
 
-            MapState state = new MapState();
+            var state = new MapState();
             state.setCenterLat(0.0);
             state.setCenterLon(0.0);
             state.setZoom(mounted.mapView().getZoom());
             state.setViewportSize(256.0, 256.0);
-            List<TileCoordinate> expectedTiles = state.visibleTiles();
+            var expectedTiles = state.visibleTiles();
 
-            List<LoadRequest> requests = retriever.awaitRequests(expectedTiles.size(), Duration.ofSeconds(1));
-            RuntimeException failure = new RuntimeException("intentional failure");
+            var requests = retriever.awaitRequests(expectedTiles.size(), Duration.ofSeconds(1));
+            var failure = new RuntimeException("intentional failure");
             requests.forEach(request -> request.future().completeExceptionally(failure));
             mounted.layout();
 
-            WritableImage snapshot = mounted.snapshot();
-            Image placeholder = PlaceholderTileFactory.placeholder();
-            Color expectedColor = FxTestHarness.callOnFxThread(() -> colorAt(placeholder, 10, 10));
-            Color actualColor = FxTestHarness.callOnFxThread(() -> colorAt(snapshot, 128, 128));
+            var snapshot = mounted.snapshot();
+            var placeholder = PlaceholderTileFactory.placeholder();
+            var expectedColor = FxTestHarness.callOnFxThread(() -> colorAt(placeholder, 10, 10));
+            var actualColor = FxTestHarness.callOnFxThread(() -> colorAt(snapshot, 128, 128));
             assertThat(actualColor.getRed()).isCloseTo(expectedColor.getRed(), within(0.01));
             assertThat(actualColor.getGreen()).isCloseTo(expectedColor.getGreen(), within(0.01));
             assertThat(actualColor.getBlue()).isCloseTo(expectedColor.getBlue(), within(0.01));
@@ -94,13 +94,13 @@ class MapViewIntegrationTest {
 
     @Test
     void panZoomLoopMaintainsHighFrameRate() {
-        WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
+        var tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
         TileRetriever retriever = (zoom, x, y) -> CompletableFuture.completedFuture(tileImage);
-        InMemoryTileCache cache = new InMemoryTileCache(512);
+        var cache = new InMemoryTileCache(512);
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 512, 512)) {
+        try (var mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 512, 512)) {
             FxTestHarness.runOnFxThread(() -> {
-                MapView view = mounted.mapView();
+                var view = mounted.mapView();
                 view.setCenterLat(0.0);
                 view.setCenterLon(0.0);
                 view.setZoom(3.0);
@@ -110,12 +110,12 @@ class MapViewIntegrationTest {
             int frames = 90;
             long start = System.nanoTime();
             for (int i = 0; i < frames; i++) {
-                double dragOffset = 40.0 * Math.sin(i * 0.25);
-                double dragX = 256.0 + dragOffset;
-                double dragY = 256.0 - dragOffset;
-                double scrollDelta = (i % 2 == 0) ? 120.0 : -120.0;
+                var dragOffset = 40.0 * Math.sin(i * 0.25);
+                var dragX = 256.0 + dragOffset;
+                var dragY = 256.0 - dragOffset;
+                var scrollDelta = (i % 2 == 0) ? 120.0 : -120.0;
                 FxTestHarness.runOnFxThread(() -> {
-                    MapView view = mounted.mapView();
+                    var view = mounted.mapView();
                     view.fireEvent(mousePressed(256.0, 256.0));
                     view.fireEvent(mouseDragged(dragX, dragY));
                     view.fireEvent(mouseReleased(dragX, dragY));
@@ -132,12 +132,12 @@ class MapViewIntegrationTest {
 
     @Test
     void layersReceiveLifecycleCallbacks() {
-        WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
+        var tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
         TileRetriever retriever = (zoom, x, y) -> CompletableFuture.completedFuture(tileImage);
-        InMemoryTileCache cache = new InMemoryTileCache(64);
-        TrackingLayer layer = new TrackingLayer();
+        var cache = new InMemoryTileCache(64);
+        var layer = new TrackingLayer();
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 400, 300)) {
+        try (var mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 400, 300)) {
             FxTestHarness.runOnFxThread(() -> mounted.mapView().getLayers().add(layer));
             mounted.layout();
 
@@ -155,13 +155,13 @@ class MapViewIntegrationTest {
 
     @Test
     void mouseDragUpdatesCenterCoordinates() {
-        WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
+        var tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
         TileRetriever retriever = (zoom, x, y) -> CompletableFuture.completedFuture(tileImage);
-        InMemoryTileCache cache = new InMemoryTileCache(128);
+        var cache = new InMemoryTileCache(128);
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 512, 512)) {
+        try (var mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 512, 512)) {
             FxTestHarness.runOnFxThread(() -> {
-                MapView view = mounted.mapView();
+                var view = mounted.mapView();
                 view.setCenterLat(0.0);
                 view.setCenterLon(0.0);
                 view.setZoom(2.0);
@@ -169,14 +169,14 @@ class MapViewIntegrationTest {
             mounted.layout();
 
             FxTestHarness.runOnFxThread(() -> {
-                MapView view = mounted.mapView();
+                var view = mounted.mapView();
                 view.fireEvent(mousePressed(256.0, 256.0));
                 view.fireEvent(mouseDragged(356.0, 256.0));
                 view.fireEvent(mouseReleased(356.0, 256.0));
             });
 
-            double lat = FxTestHarness.callOnFxThread(() -> mounted.mapView().getCenterLat());
-            double lon = FxTestHarness.callOnFxThread(() -> mounted.mapView().getCenterLon());
+            var lat = FxTestHarness.callOnFxThread(() -> mounted.mapView().getCenterLat());
+            var lon = FxTestHarness.callOnFxThread(() -> mounted.mapView().getCenterLon());
             assertThat(lat).isCloseTo(0.0, within(0.0001));
             assertThat(lon).isLessThan(0.0);
         }
@@ -184,13 +184,13 @@ class MapViewIntegrationTest {
 
     @Test
     void scrollZoomAdjustsZoomLevelAndRequestsNewTiles() throws Exception {
-        RecordingTileRetriever retriever = new RecordingTileRetriever();
-        InMemoryTileCache cache = new InMemoryTileCache(256);
-        double initialZoom = 2.8;
-        double centerLat = 12.3;
-        double centerLon = -45.6;
+        var retriever = new RecordingTileRetriever();
+        var cache = new InMemoryTileCache(256);
+        var initialZoom = 2.8;
+        var centerLat = 12.3;
+        var centerLon = -45.6;
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(
+        try (var mounted = MapViewTestHarness.mount(
                 () -> new MapView(retriever, cache),
                 512,
                 512,
@@ -202,33 +202,33 @@ class MapViewIntegrationTest {
                 })) {
             mounted.layout();
 
-            MapState baseState = new MapState();
+            var baseState = new MapState();
             baseState.setCenterLat(centerLat);
             baseState.setCenterLon(centerLon);
             baseState.setZoom(initialZoom);
             baseState.setViewportSize(512.0, 512.0);
-            List<TileCoordinate> baseTiles = baseState.visibleTiles();
+            var baseTiles = baseState.visibleTiles();
 
-            WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
-            List<LoadRequest> initialRequests = retriever.awaitRequests(baseTiles.size(), Duration.ofSeconds(1));
+            var tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
+            var initialRequests = retriever.awaitRequests(baseTiles.size(), Duration.ofSeconds(1));
             initialRequests.forEach(request -> request.future().complete(tileImage));
 
             FxTestHarness.runOnFxThread(() ->
                     mounted.mapView().fireEvent(scrollEvent(120.0, 256.0, 256.0)));
 
-            double zoomAfter = FxTestHarness.callOnFxThread(() -> mounted.mapView().getZoom());
+            var zoomAfter = FxTestHarness.callOnFxThread(() -> mounted.mapView().getZoom());
             assertThat(zoomAfter).isCloseTo(initialZoom + 0.5, within(0.0001));
 
-            MapState zoomState = new MapState();
+            var zoomState = new MapState();
             zoomState.setCenterLat(centerLat);
             zoomState.setCenterLon(centerLon);
             zoomState.setZoom(zoomAfter);
             zoomState.setViewportSize(512.0, 512.0);
-            List<TileCoordinate> zoomTiles = zoomState.visibleTiles();
-                assertThat(zoomState.discreteZoomLevel()).isGreaterThan(baseState.discreteZoomLevel());
+            var zoomTiles = zoomState.visibleTiles();
+            assertThat(zoomState.discreteZoomLevel()).isGreaterThan(baseState.discreteZoomLevel());
 
-                List<LoadRequest> zoomRequests = retriever.awaitRequests(zoomTiles.size(), Duration.ofSeconds(1));
-                assertThat(zoomRequests)
+            var zoomRequests = retriever.awaitRequests(zoomTiles.size(), Duration.ofSeconds(1));
+            assertThat(zoomRequests)
                     .extracting(LoadRequest::coordinate)
                     .containsExactlyInAnyOrderElementsOf(zoomTiles);
             zoomRequests.forEach(request -> request.future().complete(tileImage));

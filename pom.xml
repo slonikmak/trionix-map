@@ -11,6 +11,7 @@
     <modules>
         <module>trionix-map-core</module>
         <module>trionix-map-demo</module>
+        <module>trionix-map-layers</module>
     </modules>
 
     <properties>

@@ -6,7 +6,6 @@ import com.trionix.maps.GeoPoint;
 import com.trionix.maps.MapView;
 import com.trionix.maps.testing.FxTestHarness;
 import com.trionix.maps.testing.MapViewTestHarness;
-import java.util.List;
 import javafx.scene.Node;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;

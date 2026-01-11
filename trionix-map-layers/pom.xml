@@ -9,10 +9,24 @@
         <version>0.1.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>trionix-map-core</artifactId>
-    <name>Trionix Map Core Library</name>
+    <artifactId>trionix-map-layers</artifactId>
+    <name>Trionix Map Additional Layers Library</name>
 
     <dependencies>
+        <!-- Core library dependency -->
+        <dependency>
+            <groupId>com.trionix</groupId>
+            <artifactId>trionix-map-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.trionix</groupId>
+            <artifactId>trionix-map-core</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
         <!-- JavaFX as provided - consumers must supply at runtime -->
         <dependency>
             <groupId>org.openjfx</groupId>
@@ -64,42 +78,5 @@
         </dependency>
     </dependencies>
 
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>test-jar</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <archive>
-                        <manifestEntries>
-                            <Automatic-Module-Name>com.trionix.maps</Automatic-Module-Name>
-                        </manifestEntries>
-                    </archive>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-source-plugin</artifactId>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-javadoc-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
+
 </project>
