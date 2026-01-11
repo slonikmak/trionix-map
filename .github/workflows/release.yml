@@ -22,7 +22,8 @@ jobs:
           distribution: 'temurin'
           server-id: github # Value of the distributionManagement/repository/id field of the pom.xml
           server-username: x-access-token # standard username for token auth
-          server-password: ${{ secrets.GITHUB_TOKEN }} # token to write into settings.xml
+          # Prefer a user-provided PAT if present (MAVEN_TOKEN), otherwise fall back to the workflow GITHUB_TOKEN
+          server-password: ${{ secrets.MAVEN_TOKEN || secrets.GITHUB_TOKEN }} # token to write into settings.xml
           settings-path: ${{ github.workspace }} # location for the settings.xml file
 
       - name: Check settings.xml

@@ -76,3 +76,19 @@ Consumers can now use the new version in their `pom.xml` (ensure they have authe
     <version>0.1.0-beta.2</version>
 </dependency>
 ```
+
+## Publishing notes & PAT fallback ⚠️
+
+If publishing with the automatically-provided `GITHUB_TOKEN` continues to return `401`/`403`:
+
+1. **Check workflow permissions** — ensure the workflow has `packages: write` (and `contents: read`/`write`) in the workflow `permissions` block and the repo-level Actions permissions are set to **Read and write** in Settings → Actions → General.
+2. **Verify generated `settings.xml`** — the workflow includes a `Check settings.xml` step that verifies the `<server><id>github</id>` entry. Inspect job logs for the masked `settings.xml` output if the check fails.
+3. **Package access controls** — for private packages, go to the package page → **Manage Actions access** and add the repository so workflows can write to the package.
+4. **Use a PAT fallback** — create a Personal Access Token (classic or fine-grained) with **write access to Packages** (and `repo` if your package requires it). Add it as a repository secret named `MAVEN_TOKEN` and the release workflow will automatically prefer `MAVEN_TOKEN` over `GITHUB_TOKEN` when present.
+
+Example (create secret):
+- Repo → Settings → Secrets and variables → Actions → **New repository secret**
+- **Name**: `MAVEN_TOKEN`
+- **Value**: the token you generated
+
+After adding the secret, re-run the release workflow. The workflow is already configured to fall back to `MAVEN_TOKEN` when available.
