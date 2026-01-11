@@ -4,9 +4,41 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.trionix</groupId>
     <artifactId>trionix-map</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.0-beta.1</version>
     <packaging>pom</packaging>
     <name>Trionix JavaFX Map View</name>
+    <description>A lightweight, high-performance JavaFX map view control for OSM tiles.</description>
+    <url>https://github.com/slonikmak/trionix-map</url>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <scm>
+        <connection>scm:git:git://github.com/slonikmak/trionix-map.git</connection>
+        <developerConnection>scm:git:ssh://github.com:slonikmak/trionix-map.git</developerConnection>
+        <url>https://github.com/slonikmak/trionix-map/tree/master</url>
+    </scm>
+
+    <developers>
+        <developer>
+            <id>kp</id>
+            <name>KP</name>
+            <email>kp@trionix.com</email>
+        </developer>
+    </developers>
+
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <url>https://maven.pkg.github.com/slonikmak/trionix-map</url>
+        </repository>
+    </distributionManagement>
 
     <modules>
         <module>trionix-map-core</module>

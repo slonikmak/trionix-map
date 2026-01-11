@@ -5,15 +5,13 @@ import static org.assertj.core.api.Assertions.within;
 
 import com.trionix.maps.internal.MapState;
 import com.trionix.maps.internal.tiles.PlaceholderTileFactory;
-import com.trionix.maps.internal.tiles.TileCoordinate;
+
 import com.trionix.maps.layer.MapLayer;
 import com.trionix.maps.testing.FxTestHarness;
 import com.trionix.maps.testing.MapViewTestHarness;
-import com.trionix.maps.testing.MapViewTestHarness.MountedMapView;
 import com.trionix.maps.testing.RecordingTileRetriever;
 import com.trionix.maps.testing.RecordingTileRetriever.LoadRequest;
 import java.time.Duration;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import javafx.scene.image.Image;
 import javafx.scene.image.PixelReader;
@@ -213,8 +211,7 @@ class MapViewIntegrationTest {
             var initialRequests = retriever.awaitRequests(baseTiles.size(), Duration.ofSeconds(1));
             initialRequests.forEach(request -> request.future().complete(tileImage));
 
-            FxTestHarness.runOnFxThread(() ->
-                    mounted.mapView().fireEvent(scrollEvent(120.0, 256.0, 256.0)));
+            FxTestHarness.runOnFxThread(() -> mounted.mapView().fireEvent(scrollEvent(120.0, 256.0, 256.0)));
 
             var zoomAfter = FxTestHarness.callOnFxThread(() -> mounted.mapView().getZoom());
             assertThat(zoomAfter).isCloseTo(initialZoom + 0.5, within(0.0001));

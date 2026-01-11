@@ -1,13 +1,13 @@
-# Быстрый старт - Trionix Maps
+# Quick Start - Trionix Maps
 
-## Установка и запуск
+## Installation and Launch
 
-### 1. Проверьте требования
-- Java 21 или выше
+### 1. Check Requirements
+- Java 21 or higher
 - Maven 3.9+
-- Интернет-соединение (для загрузки тайлов с OpenStreetMap)
+- Internet connection (to download tiles from OpenStreetMap)
 
-### 2. Запустите пример
+### 2. Run an Example
 
 **Windows (PowerShell):**
 ```powershell
@@ -19,16 +19,16 @@
 ./run-examples.sh
 ```
 
-Или напрямую через Maven:
+Or directly via Maven:
 ```bash
-# Продвинутый пример с панелью управления
+# Advanced example with control panel
 mvn compile exec:java -Dexec.mainClass=com.trionix.maps.samples.AdvancedMapExample
 
-# Или так
+# Or this way
 mvn -pl trionix-map-demo javafx:run
 ```
 
-## Минимальный код
+## Minimal Code
 
 ```java
 import com.trionix.maps.MapView;
@@ -41,7 +41,7 @@ public class MyMapApp extends Application {
     @Override
     public void start(Stage stage) {
         MapView mapView = new MapView();
-        mapView.setCenterLat(55.7558);  // Москва
+        mapView.setCenterLat(55.7558);  // Moscow
         mapView.setCenterLon(37.6173);
         mapView.setZoom(10.0);
         
@@ -56,50 +56,50 @@ public class MyMapApp extends Application {
 }
 ```
 
-## Основные операции
+## Basic Operations
 
-### Управление картой
+### Map Control
 
 ```java
 MapView map = new MapView();
 
-// Установка позиции
-map.setCenterLat(59.9343);    // Широта
-map.setCenterLon(30.3351);     // Долгота
-map.setZoom(12.0);             // Масштаб (1-19)
+// Set position
+map.setCenterLat(59.9343);    // Latitude
+map.setCenterLon(30.3351);     // Longitude
+map.setZoom(12.0);             // Zoom Level (1-19)
 
-// Анимированный переход
+// Animated transition
 map.flyTo(55.7558, 37.6173, 10.0, Duration.seconds(2));
 ```
 
-### Добавление маркеров
+### Adding Markers
 
 ```java
-// Создайте слой
+// Create a layer
 MarkerLayer markers = new MarkerLayer();
 
-// Добавьте маркер
-Label marker = new Label("Моя метка");
+// Add a marker
+Label marker = new Label("My Label");
 markers.addMarker(55.7558, 37.6173, marker);
 
-// Добавьте слой на карту
+// Add the layer to the map
 map.getLayers().add(markers);
 ```
 
-### Отслеживание изменений
+### Tracking Changes
 
 ```java
-// Подписка на изменения
+// Subscribe to changes
 map.centerLatProperty().addListener((obs, old, newVal) -> {
-    System.out.println("Новая широта: " + newVal);
+    System.out.println("New Latitude: " + newVal);
 });
 
 map.zoomProperty().addListener((obs, old, newVal) -> {
-    System.out.println("Новый масштаб: " + newVal);
+    System.out.println("New Zoom: " + newVal);
 });
 ```
 
-## Создание слоя
+## Creating a Layer
 
 ```java
 import com.trionix.maps.layer.MapLayer;
@@ -107,51 +107,51 @@ import com.trionix.maps.layer.MapLayer;
 public class MyLayer extends MapLayer {
     @Override
     public void layoutLayer(MapView mapView) {
-        // Ваша логика размещения элементов
-        // Вызывается автоматически при изменении карты
+        // Your element placement logic
+        // Called automatically when the map changes
     }
     
     @Override
     public void layerAdded(MapView mapView) {
-        // Вызывается при добавлении слоя на карту
+        // Called when the layer is added to the map
     }
     
     @Override
     public void layerRemoved(MapView mapView) {
-        // Вызывается при удалении слоя с карты
+        // Called when the layer is removed from the map
     }
 }
 ```
 
-## Управление мышью
+## Mouse Control
 
-Встроенные функции:
-- **Перетаскивание** - панорамирование карты
-- **Колесико мыши** - изменение масштаба
-- **Двойной клик** - быстрое увеличение масштаба
-- **Жесты трекпада** - масштабирование (pinch-to-zoom)
+Built-in features:
+- **Dragging** - pans the map
+- **Mouse Wheel** - changes zoom level
+- **Double Click** - quick zoom in
+- **Trackpad Gestures** - pinch-to-zoom
 
-## Настройка кэша
+## Cache Configuration
 
 ```java
-// Создание кэша на 1000 тайлов
+// Create a cache for 1000 tiles
 TileCache cache = new InMemoryTileCache(1000);
 MapView map = new MapView(new SimpleOsmTileRetriever(), cache);
 ```
 
-## Где найти больше информации?
+## Where to Find More Information?
 
-- `src/main/java/com/trionix/maps/samples/README.md` - подробная документация с примерами
-- `src/main/java/com/trionix/maps/samples/` - исходный код всех примеров
-- JavaDoc комментарии в коде библиотеки
+- `src/main/java/com/trionix/maps/samples/README.md` - detailed documentation with examples
+- `src/main/java/com/trionix/maps/samples/` - source code for all examples
+- JavaDoc comments in the library code
 
-## Возможные проблемы
+## Possible Issues
 
-**Предупреждения SLF4J при запуске:**
-Это нормально - библиотека использует SLF4J для логирования, но в примерах логгер не настроен. Это не влияет на работу.
+**SLF4J warnings on startup:**
+This is normal - the library uses SLF4J for logging, but the logger is not configured in the examples. It does not affect functionality.
 
-**Карта не загружается:**
-Проверьте интернет-соединение - тайлы загружаются с серверов OpenStreetMap.
+**Map does not load:**
+Check your internet connection - tiles are loaded from OpenStreetMap servers.
 
-**Низкая производительность:**
-Попробуйте увеличить размер кэша или проверьте скорость интернета.
+**Low performance:**
+Try increasing the cache size or check your internet speed.

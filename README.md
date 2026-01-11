@@ -41,14 +41,81 @@ Use the mouse to drag (pan) and scroll (zoom) the map. Double-click to quickly z
 
 ## Using `MapView`
 
+### Connecting via GitHub Packages (Maven/Gradle)
+
+Artifacts are published to **GitHub Packages** (Maven registry):
+
+- `https://maven.pkg.github.com/slonikmak/trionix-map`
+
+> Important: GitHub Packages typically requires authentication for Maven, even for public packages — without a token, you will receive a `401` error when resolving dependencies.
+
+#### Maven: 1) Configure `~/.m2/settings.xml`
+
+Add a server with `id=github` (it must match the `<distributionManagement><repository><id>github</id>` in this project):
+
+```xml
+<settings>
+  <servers>
+    <server>
+      <id>github</id>
+      <username>YOUR_GITHUB_USERNAME</username>
+      <password>YOUR_GITHUB_TOKEN</password>
+    </server>
+  </servers>
+</settings>
+```
+
+The Personal Access Token (PAT) must have at least `read:packages` permissions (and `repo` if the repository/packages are private).
+
+#### Publishing Artifacts (for maintainers)
+
+- Locally: `mvn -B -ntp -DskipTests deploy` (PAT must have `write:packages` permissions).
+- The repository includes a GitHub Actions workflow: `.github/workflows/publish-packages.yml` (trigger manually via **Actions → Publish to GitHub Packages** or upon a GitHub Release publication).
+
+#### Maven: 2) Add the repository to your `pom.xml`
+
+```xml
+<repositories>
+  <repository>
+    <id>github</id>
+    <url>https://maven.pkg.github.com/slonikmak/trionix-map</url>
+  </repository>
+</repositories>
+```
+
+#### Gradle (Kotlin/Groovy): Repository + Credentials
+
+```groovy
+repositories {
+  maven {
+    url = uri("https://maven.pkg.github.com/slonikmak/trionix-map")
+    credentials {
+      username = System.getenv("GITHUB_ACTOR") ?: "YOUR_GITHUB_USERNAME"
+      password = System.getenv("GITHUB_TOKEN") ?: "YOUR_GITHUB_TOKEN"
+    }
+  }
+}
+```
+
+Then, add the required module as a dependency (usually `trionix-map-core` and/or `trionix-map-layers`).
+
+### Maven dependency
+
 Add `trionix-map-core` as a dependency. You must provide JavaFX at runtime:
 
 ```xml
 <dependency>
     <groupId>com.trionix</groupId>
     <artifactId>trionix-map-core</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.0-beta.1</version>
 </dependency>
+<!-- Optional: extra built-in overlay layers -->
+<dependency>
+    <groupId>com.trionix</groupId>
+    <artifactId>trionix-map-layers</artifactId>
+    <version>0.1.0-beta.1</version>
+</dependency>
+
 <!-- Provide JavaFX with your chosen version and platform -->
 <dependency>
     <groupId>org.openjfx</groupId>

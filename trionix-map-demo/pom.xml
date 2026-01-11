@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.trionix</groupId>
         <artifactId>trionix-map</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
+        <version>0.1.0-beta.1</version>
     </parent>
 
     <artifactId>trionix-map-demo</artifactId>
