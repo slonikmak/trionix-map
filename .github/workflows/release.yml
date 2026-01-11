@@ -3,6 +3,12 @@ name: Release to GitHub Packages and Releases
 on:
   release:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Set to true to run an actual deploy (use with care). Defaults to false.'
+        required: false
+        default: 'false'
 
 jobs:
   publish:
@@ -52,6 +58,7 @@ jobs:
           fi
 
       - name: Build and Publish to GitHub Packages
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true')
         run: mvn -s "${{ github.workspace }}/settings.xml" -B deploy -DskipTests=true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
