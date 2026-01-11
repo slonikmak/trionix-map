@@ -21,12 +21,23 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
           server-id: github # Value of the distributionManagement/repository/id field of the pom.xml
-          server-username: ${{ github.actor }} # username to write into settings.xml
+          server-username: x-access-token # standard username for token auth
           server-password: ${{ secrets.GITHUB_TOKEN }} # token to write into settings.xml
           settings-path: ${{ github.workspace }} # location for the settings.xml file
 
+      - name: Check settings.xml
+        run: |
+          echo "Checking generated settings.xml for github server entry"
+          if grep -q "<id>github</id>" "${{ github.workspace }}/settings.xml"; then
+            echo "Found server id 'github' in settings.xml"
+          else
+            echo "settings.xml missing server id 'github' - here is the file (password masked):"
+            sed -n '1,200p' "${{ github.workspace }}/settings.xml" | sed -E "s|<password>[^<]*</password>|<password>***masked***</password>|g"
+            exit 1
+          fi
+
       - name: Build and Publish to GitHub Packages
-        run: mvn deploy -DskipTests=true
+        run: mvn -s "${{ github.workspace }}/settings.xml" -B deploy -DskipTests=true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
