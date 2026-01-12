@@ -29,7 +29,7 @@ jobs:
 
       - name: Build and Publish to GitHub Packages
         if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true')
-        run: mvn --batch-mode deploy -DskipTests=true
+        run: mvn --batch-mode -pl trionix-map-core,trionix-map-layers -am deploy -DskipTests=true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
