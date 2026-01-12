@@ -3,63 +3,26 @@ name: Release to GitHub Packages and Releases
 on:
   release:
     types: [created]
-  workflow_dispatch:
-    inputs:
-      deploy:
-        description: 'Set to true to run an actual deploy (use with care). Defaults to false.'
-        required: false
-        default: 'false'
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       packages: write
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
-          server-id: github # Value of the distributionManagement/repository/id field of the pom.xml
-          server-username: x-access-token # standard username for token auth
-          # Prefer a user-provided PAT if present (MAVEN_TOKEN), otherwise fall back to the workflow GITHUB_TOKEN
-          server-password: ${{ secrets.MAVEN_TOKEN || secrets.GITHUB_TOKEN }} # token to write into settings.xml
-          settings-path: ${{ github.workspace }} # location for the settings.xml file
-
-      - name: Check settings.xml
-        run: |
-          echo "Checking generated settings.xml for github server entry"
-          if grep -q "<id>github</id>" "${{ github.workspace }}/settings.xml"; then
-            echo "Found server id 'github' in settings.xml"
-          else
-            echo "settings.xml missing server id 'github' - here is the file (password masked):"
-            sed -n '1,200p' "${{ github.workspace }}/settings.xml" | sed -E "s|<password>[^<]*</password>|<password>***masked***</password>|g"
-            exit 1
-          fi
-
-      - name: Test package token authentication
-        run: |
-          echo "Testing token authentication against GitHub API"
-          TOKEN="${{ secrets.MAVEN_TOKEN || secrets.GITHUB_TOKEN }}"
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" https://api.github.com/user || true)
-          if [ "$HTTP_CODE" = "200" ]; then
-            LOGIN=$(curl -s -H "Authorization: Bearer $TOKEN" https://api.github.com/user | sed -n 's/.*"login": "\([^"]*\)".*/\1/p')
-            echo "Token valid for user: $LOGIN"
-          else
-            echo "Token auth failed (HTTP $HTTP_CODE)"
-            echo "If this is 401/403: check repo Actions permissions, add repo to package's 'Manage Actions access' or provide a PAT in secret 'MAVEN_TOKEN' with 'write:packages' scope."
-            exit 1
-          fi
-
+          
       - name: Build and Publish to GitHub Packages
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true')
-        run: mvn -s "${{ github.workspace }}/settings.xml" -B deploy -DskipTests=true
+        run: mvn --batch-mode deploy -DskipTests=true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
