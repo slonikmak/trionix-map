@@ -3,30 +3,34 @@ package com.trionix.maps;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.trionix.maps.testing.FxTestHarness;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
 import java.util.concurrent.ExecutionException;
+import javafx.stage.Stage;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okio.Buffer;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.testfx.framework.junit5.ApplicationExtension;
+import org.testfx.framework.junit5.Start;
 
+@ExtendWith(ApplicationExtension.class)
 class SimpleOsmTileRetrieverTest {
 
-    private static byte[] pngBytes;
-
+    private byte[] pngBytes;
     private MockWebServer webServer;
 
-    @BeforeAll
-    static void initializeToolkitAndLoadImage() throws IOException {
-        FxTestHarness.runOnFxThread(() -> {
-        });
+    @Start
+    private void start(Stage stage) {
+        // Initialize JavaFX toolkit
+    }
+
+    @BeforeEach
+    void setUp() throws IOException {
         try (InputStream stream = SimpleOsmTileRetrieverTest.class
                 .getResourceAsStream("/com/trionix/maps/placeholder-tile.png")) {
             if (stream == null) {
@@ -34,15 +38,6 @@ class SimpleOsmTileRetrieverTest {
             }
             pngBytes = stream.readAllBytes();
         }
-    }
-
-    @AfterAll
-    static void cleanup() {
-        pngBytes = null;
-    }
-
-    @BeforeEach
-    void setUp() throws IOException {
         webServer = new MockWebServer();
         webServer.start();
     }
@@ -50,6 +45,7 @@ class SimpleOsmTileRetrieverTest {
     @AfterEach
     void tearDown() throws IOException {
         webServer.shutdown();
+        pngBytes = null;
     }
 
     @Test

@@ -4,185 +4,217 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
 import com.trionix.maps.internal.MapState;
-import com.trionix.maps.testing.FxTestHarness;
-import com.trionix.maps.testing.MapViewTestHarness;
-import com.trionix.maps.testing.MapViewTestHarness.MountedMapView;
 import java.util.concurrent.CompletableFuture;
+import javafx.application.Platform;
+import javafx.scene.Scene;
 import javafx.scene.image.WritableImage;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
+import javafx.scene.layout.StackPane;
+import javafx.stage.Stage;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.testfx.framework.junit5.ApplicationExtension;
+import org.testfx.framework.junit5.Start;
+import org.testfx.util.WaitForAsyncUtils;
 
-/**
- * Tests for MapView double-click zoom functionality.
- */
+@ExtendWith(ApplicationExtension.class)
 class MapViewDoubleClickZoomTest {
+
+    private Stage stage;
+    private MapView mapView;
+
+    @Start
+    private void start(Stage stage) {
+        this.stage = stage;
+        stage.setScene(new Scene(new StackPane(), 512, 512));
+        stage.show();
+    }
+
+    @AfterEach
+    void cleanup() {
+        Platform.runLater(() -> {
+            if (stage != null && stage.getScene() != null) {
+                ((StackPane) stage.getScene().getRoot()).getChildren().clear();
+            }
+            mapView = null;
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+    }
 
     @Test
     void doubleClickIncrementsZoomByOne() {
-        WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
+        WritableImage tileImage = new WritableImage(256, 256);
         TileRetriever retriever = (zoom, x, y) -> CompletableFuture.completedFuture(tileImage);
         InMemoryTileCache cache = new InMemoryTileCache(128);
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 512, 512)) {
-            FxTestHarness.runOnFxThread(() -> {
-                MapView view = mounted.mapView();
-                disableAnimations(view);
-                view.setCenterLat(0.0);
-                view.setCenterLon(0.0);
-                view.setZoom(5.0);
-            });
-            mounted.layout();
+        mount(() -> new MapView(retriever, cache), 512, 512);
 
-            double initialZoom = FxTestHarness.callOnFxThread(() -> mounted.mapView().getZoom());
+        Platform.runLater(() -> {
+            disableAnimations(mapView);
+            mapView.setCenterLat(0.0);
+            mapView.setCenterLon(0.0);
+            mapView.setZoom(5.0);
+            mapView.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
 
-            FxTestHarness.runOnFxThread(() ->
-                    mounted.mapView().fireEvent(mouseDoubleClick(256.0, 256.0)));
+        double initialZoom = mapView.getZoom();
 
-            double zoomAfter = FxTestHarness.callOnFxThread(() -> mounted.mapView().getZoom());
-            assertThat(zoomAfter).isCloseTo(initialZoom + 1.0, within(0.0001));
-        }
+        Platform.runLater(() -> mapView.fireEvent(mouseDoubleClick(256.0, 256.0)));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        double zoomAfter = mapView.getZoom();
+        assertThat(zoomAfter).isCloseTo(initialZoom + 1.0, within(0.0001));
     }
 
     @Test
     void doubleClickDoesNotZoomWhenDisabled() {
-        WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
+        WritableImage tileImage = new WritableImage(256, 256);
         TileRetriever retriever = (zoom, x, y) -> CompletableFuture.completedFuture(tileImage);
         InMemoryTileCache cache = new InMemoryTileCache(128);
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 512, 512)) {
-            FxTestHarness.runOnFxThread(() -> {
-                MapView view = mounted.mapView();
-                disableAnimations(view);
-                view.setCenterLat(0.0);
-                view.setCenterLon(0.0);
-                view.setZoom(5.0);
-                view.setEnableDoubleClickZoom(false);
-            });
-            mounted.layout();
+        mount(() -> new MapView(retriever, cache), 512, 512);
 
-            double initialZoom = FxTestHarness.callOnFxThread(() -> mounted.mapView().getZoom());
+        Platform.runLater(() -> {
+            disableAnimations(mapView);
+            mapView.setCenterLat(0.0);
+            mapView.setCenterLon(0.0);
+            mapView.setZoom(5.0);
+            mapView.setEnableDoubleClickZoom(false);
+            mapView.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
 
-            FxTestHarness.runOnFxThread(() ->
-                    mounted.mapView().fireEvent(mouseDoubleClick(256.0, 256.0)));
+        double initialZoom = mapView.getZoom();
 
-            double zoomAfter = FxTestHarness.callOnFxThread(() -> mounted.mapView().getZoom());
-            assertThat(zoomAfter).isEqualTo(initialZoom);
-        }
+        Platform.runLater(() -> mapView.fireEvent(mouseDoubleClick(256.0, 256.0)));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        double zoomAfter = mapView.getZoom();
+        assertThat(zoomAfter).isEqualTo(initialZoom);
     }
 
     @Test
     void doubleClickDoesNotExceedMaxZoom() {
-        WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
+        WritableImage tileImage = new WritableImage(256, 256);
         TileRetriever retriever = (zoom, x, y) -> CompletableFuture.completedFuture(tileImage);
         InMemoryTileCache cache = new InMemoryTileCache(128);
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 512, 512)) {
-            FxTestHarness.runOnFxThread(() -> {
-                MapView view = mounted.mapView();
-                disableAnimations(view);
-                view.setCenterLat(0.0);
-                view.setCenterLon(0.0);
-                view.setZoom(MapState.DEFAULT_MAX_ZOOM);
-            });
-            mounted.layout();
+        mount(() -> new MapView(retriever, cache), 512, 512);
 
-            double initialZoom = FxTestHarness.callOnFxThread(() -> mounted.mapView().getZoom());
-            assertThat(initialZoom).isEqualTo(MapState.DEFAULT_MAX_ZOOM);
+        Platform.runLater(() -> {
+            disableAnimations(mapView);
+            mapView.setCenterLat(0.0);
+            mapView.setCenterLon(0.0);
+            mapView.setZoom(MapState.DEFAULT_MAX_ZOOM);
+            mapView.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
 
-            FxTestHarness.runOnFxThread(() ->
-                    mounted.mapView().fireEvent(mouseDoubleClick(256.0, 256.0)));
+        double initialZoom = mapView.getZoom();
+        assertThat(initialZoom).isEqualTo(MapState.DEFAULT_MAX_ZOOM);
 
-            double zoomAfter = FxTestHarness.callOnFxThread(() -> mounted.mapView().getZoom());
-            assertThat(zoomAfter).isEqualTo(MapState.DEFAULT_MAX_ZOOM);
-        }
+        Platform.runLater(() -> mapView.fireEvent(mouseDoubleClick(256.0, 256.0)));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        double zoomAfter = mapView.getZoom();
+        assertThat(zoomAfter).isEqualTo(MapState.DEFAULT_MAX_ZOOM);
     }
 
     @Test
     void doubleClickPreservesCursorGeographicPosition() {
-        WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
+        WritableImage tileImage = new WritableImage(256, 256);
         TileRetriever retriever = (zoom, x, y) -> CompletableFuture.completedFuture(tileImage);
         InMemoryTileCache cache = new InMemoryTileCache(128);
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 512, 512)) {
-            FxTestHarness.runOnFxThread(() -> {
-                MapView view = mounted.mapView();
-                disableAnimations(view);
-                view.setCenterLat(37.7749);
-                view.setCenterLon(-122.4194);
-                view.setZoom(10.0);
-            });
-            mounted.layout();
+        mount(() -> new MapView(retriever, cache), 512, 512);
 
-            // Double-click at a position offset from center
-            double clickX = 384.0; // Off-center to right
-            double clickY = 192.0; // Off-center to top
+        Platform.runLater(() -> {
+            disableAnimations(mapView);
+            mapView.setCenterLat(37.7749);
+            mapView.setCenterLon(-122.4194);
+            mapView.setZoom(10.0);
+            mapView.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
 
-            FxTestHarness.runOnFxThread(() ->
-                    mounted.mapView().fireEvent(mouseDoubleClick(clickX, clickY)));
-            mounted.layout();
+        // Double-click at a position offset from center
+        double clickX = 384.0;
+        double clickY = 192.0;
 
-            // After zoom, the clicked point should remain approximately at the same screen position
-            // We verify this by checking that the geographic point is still close to the cursor
-            // This is an indirect test - the actual verification is that applyZoom handles this correctly
-            double zoomAfter = FxTestHarness.callOnFxThread(() -> mounted.mapView().getZoom());
-            assertThat(zoomAfter).isCloseTo(11.0, within(0.0001));
+        Platform.runLater(() -> {
+            mapView.fireEvent(mouseDoubleClick(clickX, clickY));
+            mapView.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
 
-            // The center should have shifted to keep the clicked geo point under the cursor
-            // Exact verification requires computing expected center, but we can verify zoom changed
-            double centerLatAfter = FxTestHarness.callOnFxThread(() -> mounted.mapView().getCenterLat());
-            double centerLonAfter = FxTestHarness.callOnFxThread(() -> mounted.mapView().getCenterLon());
-            
-            // Center should have changed (since we clicked off-center)
-            assertThat(centerLatAfter).isNotEqualTo(37.7749);
-            assertThat(centerLonAfter).isNotEqualTo(-122.4194);
-        }
+        double zoomAfter = mapView.getZoom();
+        assertThat(zoomAfter).isCloseTo(11.0, within(0.0001));
+
+        double centerLatAfter = mapView.getCenterLat();
+        double centerLonAfter = mapView.getCenterLon();
+        
+        // Center should have changed
+        assertThat(centerLatAfter).isNotEqualTo(37.7749);
+        assertThat(centerLonAfter).isNotEqualTo(-122.4194);
     }
 
     @Test
     void singleClickDoesNotZoom() {
-        WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
+        WritableImage tileImage = new WritableImage(256, 256);
         TileRetriever retriever = (zoom, x, y) -> CompletableFuture.completedFuture(tileImage);
         InMemoryTileCache cache = new InMemoryTileCache(128);
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 512, 512)) {
-            FxTestHarness.runOnFxThread(() -> {
-                MapView view = mounted.mapView();
-                disableAnimations(view);
-                view.setCenterLat(0.0);
-                view.setCenterLon(0.0);
-                view.setZoom(5.0);
-            });
-            mounted.layout();
+        mount(() -> new MapView(retriever, cache), 512, 512);
 
-            double initialZoom = FxTestHarness.callOnFxThread(() -> mounted.mapView().getZoom());
+        Platform.runLater(() -> {
+            disableAnimations(mapView);
+            mapView.setCenterLat(0.0);
+            mapView.setCenterLon(0.0);
+            mapView.setZoom(5.0);
+            mapView.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
 
-            FxTestHarness.runOnFxThread(() ->
-                    mounted.mapView().fireEvent(mouseSingleClick(256.0, 256.0)));
+        double initialZoom = mapView.getZoom();
 
-            double zoomAfter = FxTestHarness.callOnFxThread(() -> mounted.mapView().getZoom());
-            assertThat(zoomAfter).isEqualTo(initialZoom);
-        }
+        Platform.runLater(() -> mapView.fireEvent(mouseSingleClick(256.0, 256.0)));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        double zoomAfter = mapView.getZoom();
+        assertThat(zoomAfter).isEqualTo(initialZoom);
     }
 
     @Test
     void enableDoubleClickZoomDefaultsToTrue() {
-        FxTestHarness.runOnFxThread(() -> {
-            MapView mapView = new MapView();
-            assertThat(mapView.isEnableDoubleClickZoom()).isTrue();
-        });
+        WaitForAsyncUtils.waitForFxEvents();
+        MapView mapView = new MapView();
+        assertThat(mapView.isEnableDoubleClickZoom()).isTrue();
     }
 
     @Test
     void enableDoubleClickZoomCanBeToggled() {
-        FxTestHarness.runOnFxThread(() -> {
-            MapView mapView = new MapView();
-            mapView.setEnableDoubleClickZoom(false);
-            assertThat(mapView.isEnableDoubleClickZoom()).isFalse();
-            
-            mapView.setEnableDoubleClickZoom(true);
-            assertThat(mapView.isEnableDoubleClickZoom()).isTrue();
+        WaitForAsyncUtils.waitForFxEvents();
+        MapView mapView = new MapView();
+        mapView.setEnableDoubleClickZoom(false);
+        assertThat(mapView.isEnableDoubleClickZoom()).isFalse();
+        
+        mapView.setEnableDoubleClickZoom(true);
+        assertThat(mapView.isEnableDoubleClickZoom()).isTrue();
+    }
+
+    private void mount(java.util.function.Supplier<MapView> factory, double width, double height) {
+        Platform.runLater(() -> {
+            this.mapView = factory.get();
+            StackPane root = (StackPane) stage.getScene().getRoot();
+            root.getChildren().setAll(mapView);
+            mapView.resize(width, height);
+            mapView.requestLayout();
+            mapView.layout();
         });
+        WaitForAsyncUtils.waitForFxEvents();
     }
 
     private static MouseEvent mouseDoubleClick(double x, double y) {
@@ -193,17 +225,17 @@ class MapViewDoubleClickZoomTest {
                 x,
                 y,
                 MouseButton.PRIMARY,
-                2, // Click count = 2 for double-click
+                2, // Click count = 2
                 false,
                 false,
                 false,
                 false,
-                false, // primaryButtonDown = false for CLICKED event
                 false,
                 false,
                 false,
                 false,
-                true, // stillSincePress = true
+                false,
+                true,
                 null);
     }
 
@@ -219,17 +251,17 @@ class MapViewDoubleClickZoomTest {
                 x,
                 y,
                 MouseButton.PRIMARY,
-                1, // Click count = 1 for single-click
+                1, // Click count = 1
                 false,
                 false,
                 false,
                 false,
-                false, // primaryButtonDown = false for CLICKED event
                 false,
                 false,
                 false,
                 false,
-                true, // stillSincePress = true
+                false,
+                true,
                 null);
     }
 }

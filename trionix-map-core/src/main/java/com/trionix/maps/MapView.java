@@ -8,10 +8,8 @@ import com.trionix.maps.internal.MapState;
 import com.trionix.maps.internal.interaction.MapInteractionHandler;
 import com.trionix.maps.internal.projection.Projection;
 import com.trionix.maps.internal.projection.WebMercatorProjection;
-import com.trionix.maps.internal.tiles.PlaceholderTileFactory;
-import com.trionix.maps.internal.tiles.TileCoordinate;
-import com.trionix.maps.internal.tiles.TileManager;
 import com.trionix.maps.layer.MapLayer;
+import com.trionix.maps.layer.TileLayer;
 import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
@@ -29,9 +27,6 @@ import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
-import javafx.scene.canvas.Canvas;
-import javafx.scene.canvas.GraphicsContext;
-import javafx.scene.image.Image;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Region;
 import javafx.util.Duration;
@@ -51,7 +46,6 @@ public final class MapView extends Region {
 
     private static final int DEFAULT_CACHE_CAPACITY = 500;
     private static final double PREF_SIZE = 512.0;
-    private static final Image PLACEHOLDER = PlaceholderTileFactory.placeholder();
 
     private final DoubleProperty centerLat = createNormalizedProperty(
             "centerLat", v -> clampLatitude(v), 0.0);
@@ -64,18 +58,13 @@ public final class MapView extends Region {
     private boolean enableDoubleClickZoom = true;
 
     private final MapState mapState = new MapState();
-    private final TileManager tileManager;
     private final Projection projection = WebMercatorProjection.INSTANCE;
-    private final Canvas tileCanvas = new Canvas();
     private final Pane layerPane = new Pane();
-    private final GraphicsContext graphics = tileCanvas.getGraphicsContext2D();
     private final ObservableList<MapLayer> layers = FXCollections.observableArrayList();
     private final MapInteractionHandler interactionHandler;
+    private TileLayer internalTileLayer;
     private Timeline navigationTimeline;
     private Runnable activeAnimationCleanup;
-
-    private List<TileCoordinate> currentVisibleTiles = List.of();
-    private boolean refreshPending;
 
     /**
      * Creates a {@code MapView} that uses {@link SimpleOsmTileRetriever} and an
@@ -92,20 +81,26 @@ public final class MapView extends Region {
      * @param retriever strategy used to fetch tiles; must be thread-safe because it
      *                  is invoked from
      *                  background threads
-     * @param cache     in-memory cache for decoded {@link Image} instances; must be
+     * @param cache     in-memory cache for decoded {@link javafx.scene.image.Image}
+     *                  instances; must be
      *                  thread-safe because
      *                  it is accessed concurrently by the tile loader
      */
     public MapView(TileRetriever retriever, TileCache cache) {
         Objects.requireNonNull(retriever, "retriever");
         Objects.requireNonNull(cache, "cache");
-        this.tileManager = new TileManager(cache, retriever);
         this.interactionHandler = new MapInteractionHandler(this);
 
         initializeProperties();
         initializeSceneGraph();
         interactionHandler.install();
         initializeLayers();
+
+        // Add internal tile layer (not part of user-facing layers list)
+        internalTileLayer = new TileLayer(retriever, cache);
+        internalTileLayer.attachToMapView(this);
+        layerPane.getChildren().add(0, internalTileLayer); // Add at bottom
+        internalTileLayer.layerAdded(this);
     }
 
     /**
@@ -288,33 +283,14 @@ public final class MapView extends Region {
     protected void layoutChildren() {
         double width = snapSizeX(getWidth());
         double height = snapSizeY(getHeight());
-        tileCanvas.setWidth(width);
-        tileCanvas.setHeight(height);
-        tileCanvas.relocate(0.0, 0.0);
         layerPane.resizeRelocate(0.0, 0.0, width, height);
 
         if (width != mapState.getViewportWidth() || height != mapState.getViewportHeight()) {
             mapState.setViewportSize(width, height);
-            scheduleRefresh();
+            requestLayout();
         }
 
-        drawTiles(width, height);
         layoutLayerNodes(width, height);
-    }
-
-    /**
-     * Schedules a tile refresh on the next FX pulse, coalescing multiple rapid
-     * property changes into a single refresh operation.
-     */
-    private void scheduleRefresh() {
-        if (refreshPending) {
-            return;
-        }
-        refreshPending = true;
-        Platform.runLater(() -> {
-            refreshPending = false;
-            refreshTiles();
-        });
     }
 
     private void initializeProperties() {
@@ -324,35 +300,23 @@ public final class MapView extends Region {
 
         centerLat.addListener((obs, oldValue, newValue) -> {
             mapState.setCenterLat(newValue.doubleValue());
-            scheduleRefresh();
+            requestLayout();
         });
         centerLon.addListener((obs, oldValue, newValue) -> {
             mapState.setCenterLon(newValue.doubleValue());
-            scheduleRefresh();
+            requestLayout();
         });
         zoom.addListener((obs, oldValue, newValue) -> {
             mapState.setZoom(newValue.doubleValue());
-            scheduleRefresh();
+            requestLayout();
         });
     }
 
     private void initializeSceneGraph() {
-        tileCanvas.setManaged(false);
-        tileCanvas.setMouseTransparent(true);
         layerPane.setManaged(false);
         layerPane.setPickOnBounds(false);
-        getChildren().addAll(tileCanvas, layerPane);
+        getChildren().add(layerPane);
         getStyleClass().add("map-view");
-    }
-
-    private void refreshTiles() {
-        if (mapState.getViewportWidth() <= 0 || mapState.getViewportHeight() <= 0) {
-            return;
-        }
-        List<TileCoordinate> visible = mapState.visibleTiles();
-        currentVisibleTiles = visible;
-        tileManager.refreshTiles(visible, (coordinate, image) -> requestLayout());
-        requestLayout();
     }
 
     private void initializeLayers() {
@@ -377,33 +341,13 @@ public final class MapView extends Region {
         });
     }
 
-    private void drawTiles(double width, double height) {
-        graphics.clearRect(0.0, 0.0, width, height);
-        if (currentVisibleTiles.isEmpty()) {
-            return;
-        }
-        int zoomLevel = mapState.discreteZoomLevel();
-        Projection.PixelCoordinate centerPixels = projection.latLonToPixel(
-                mapState.getCenterLat(), mapState.getCenterLon(), zoomLevel);
-        double halfWidth = width / 2.0;
-        double halfHeight = height / 2.0;
-        double tileSize = Projection.TILE_SIZE;
-
-        for (TileCoordinate tile : currentVisibleTiles) {
-            Image cached = tileManager.cachedTile(tile);
-            Image image = cached != null ? cached : PLACEHOLDER;
-            double tileOriginX = tile.x() * tileSize;
-            double tileOriginY = tile.y() * tileSize;
-            double screenX = tileOriginX - centerPixels.x() + halfWidth;
-            double screenY = tileOriginY - centerPixels.y() + halfHeight;
-            graphics.drawImage(image, screenX, screenY, tileSize, tileSize);
-        }
-    }
-
     private void layoutLayerNodes(double width, double height) {
-        if (layers.isEmpty()) {
-            return;
+        // Layout internal tile layer first
+        if (internalTileLayer != null) {
+            internalTileLayer.resizeRelocate(0.0, 0.0, width, height);
+            internalTileLayer.layoutLayer(this);
         }
+        // Layout user layers
         for (MapLayer layer : layers) {
             layer.resizeRelocate(0.0, 0.0, width, height);
             layer.layoutLayer(this);
@@ -417,11 +361,14 @@ public final class MapView extends Region {
         }
         layer.attachToMapView(this);
         layerPane.getChildren().remove(layer);
-        int boundedIndex = Math.max(0, Math.min(index, layerPane.getChildren().size()));
-        if (boundedIndex >= layerPane.getChildren().size()) {
+        // Offset by 1 to account for internal tile layer at index 0
+        int baseOffset = (internalTileLayer != null) ? 1 : 0;
+        int boundedIndex = Math.max(0, Math.min(index, layerPane.getChildren().size() - baseOffset));
+        int insertAt = baseOffset + boundedIndex;
+        if (insertAt >= layerPane.getChildren().size()) {
             layerPane.getChildren().add(layer);
         } else {
-            layerPane.getChildren().add(boundedIndex, layer);
+            layerPane.getChildren().add(insertAt, layer);
         }
         layer.layerAdded(this);
     }

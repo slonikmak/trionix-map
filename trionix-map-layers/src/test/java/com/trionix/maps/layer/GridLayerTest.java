@@ -1,14 +1,30 @@
 package com.trionix.maps.layer;
 
 import com.trionix.maps.MapView;
-import com.trionix.maps.testing.FxTestHarness;
-import com.trionix.maps.testing.MapViewTestHarness;
+import javafx.application.Platform;
+import javafx.scene.Scene;
+import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
+import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.testfx.framework.junit5.ApplicationExtension;
+import org.testfx.framework.junit5.Start;
+import org.testfx.util.WaitForAsyncUtils;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@ExtendWith(ApplicationExtension.class)
 class GridLayerTest {
+
+    private Stage stage;
+
+    @Start
+    private void start(Stage stage) {
+        this.stage = stage;
+        stage.setScene(new Scene(new StackPane(), 800, 600));
+        stage.show();
+    }
 
     @Test
     void constructor_setsDefaults() {
@@ -34,65 +50,65 @@ class GridLayerTest {
 
     @Test
     void layoutLayer_withZeroSize_doesNotThrow() {
-        try (var mounted = MapViewTestHarness.mount(MapView::new, 0.0, 0.0)) {
-            MapView mapView = mounted.mapView();
+        Platform.runLater(() -> {
+            MapView mapView = new MapView();
+            ((StackPane) stage.getScene().getRoot()).getChildren().setAll(mapView);
+            // Resize to 0
+            mapView.resize(0.0, 0.0);
+            
             GridLayer layer = new GridLayer();
+            mapView.getLayers().add(layer);
+            
+            mapView.requestLayout();
+            mapView.layout();
 
-            FxTestHarness.runOnFxThread(() -> {
-                mapView.getLayers().add(layer);
-            });
-
-            mounted.layout();
-
-            // Should not throw
-            FxTestHarness.runOnFxThread(() -> {
-                assertDoesNotThrow(() -> layer.layoutLayer(mapView));
-            });
-        }
+            assertDoesNotThrow(() -> layer.layoutLayer(mapView));
+        });
+        WaitForAsyncUtils.waitForFxEvents();
     }
 
     @Test
     void layoutLayer_withValidSize_doesNotThrow() {
-        try (var mounted = MapViewTestHarness.mount(MapView::new, 800.0, 600.0)) {
-            MapView mapView = mounted.mapView();
+        Platform.runLater(() -> {
+            MapView mapView = new MapView();
+            ((StackPane) stage.getScene().getRoot()).getChildren().setAll(mapView);
+            mapView.resize(800.0, 600.0);
+            
             GridLayer layer = new GridLayer();
+            mapView.getLayers().add(layer);
+            mapView.setCenterLat(50.0);
+            mapView.setCenterLon(10.0);
+            mapView.setZoom(5);
 
-            FxTestHarness.runOnFxThread(() -> {
-                mapView.getLayers().add(layer);
-                mapView.setCenterLat(50.0);
-                mapView.setCenterLon(10.0);
-                mapView.setZoom(5);
-            });
+            mapView.requestLayout();
+            mapView.layout();
 
-            mounted.layout();
-
-            FxTestHarness.runOnFxThread(() -> {
-                assertDoesNotThrow(() -> layer.layoutLayer(mapView));
-            });
-        }
+            assertDoesNotThrow(() -> layer.layoutLayer(mapView));
+        });
+        WaitForAsyncUtils.waitForFxEvents();
     }
 
     @Test
     void visibilityToggle_affectsRendering() {
-        try (var mounted = MapViewTestHarness.mount(MapView::new, 800.0, 600.0)) {
-            MapView mapView = mounted.mapView();
+        Platform.runLater(() -> {
+            MapView mapView = new MapView();
+            ((StackPane) stage.getScene().getRoot()).getChildren().setAll(mapView);
+            mapView.resize(800.0, 600.0);
+
             GridLayer layer = new GridLayer();
+            mapView.getLayers().add(layer);
 
-            FxTestHarness.runOnFxThread(() -> {
-                mapView.getLayers().add(layer);
-            });
+            mapView.requestLayout();
+            mapView.layout();
 
-            mounted.layout();
+            assertTrue(layer.isVisible(), "Layer should be visible by default");
 
-            FxTestHarness.runOnFxThread(() -> {
-                assertTrue(layer.isVisible(), "Layer should be visible by default");
+            layer.setVisible(false);
+            assertFalse(layer.isVisible(), "Layer should be hidden after setVisible(false)");
 
-                layer.setVisible(false);
-                assertFalse(layer.isVisible(), "Layer should be hidden after setVisible(false)");
-
-                layer.setVisible(true);
-                assertTrue(layer.isVisible(), "Layer should be visible after setVisible(true)");
-            });
-        }
+            layer.setVisible(true);
+            assertTrue(layer.isVisible(), "Layer should be visible after setVisible(true)");
+        });
+        WaitForAsyncUtils.waitForFxEvents();
     }
 }

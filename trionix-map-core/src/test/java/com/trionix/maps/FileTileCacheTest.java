@@ -3,7 +3,6 @@ package com.trionix.maps;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.trionix.maps.testing.FxTestHarness;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,34 +15,35 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import javafx.scene.image.Image;
 import javafx.scene.image.WritableImage;
-import org.junit.jupiter.api.AfterAll;
+import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.testfx.framework.junit5.ApplicationExtension;
+import org.testfx.framework.junit5.Start;
+import org.testfx.util.WaitForAsyncUtils;
 
+@ExtendWith(ApplicationExtension.class)
 class FileTileCacheTest {
 
-    private static Image sampleImage;
+    private Image sampleImage;
 
     @TempDir
     Path tempDir;
 
     private Path cacheDir;
 
-    @BeforeAll
-    static void setupImage() {
-        sampleImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
-    }
-
-    @AfterAll
-    static void cleanup() {
-        sampleImage = null;
+    @Start
+    private void start(Stage stage) {
+        // Initialize JavaFX toolkit
     }
 
     @BeforeEach
     void setUp() {
+        WaitForAsyncUtils.waitForFxEvents();
+        sampleImage = new WritableImage(256, 256);
         cacheDir = tempDir.resolve("tiles");
     }
 
@@ -102,7 +102,6 @@ class FileTileCacheTest {
     void lruEvictionRemovesOldestFilesWhenCapacityExceeded() throws InterruptedException {
         FileTileCache cache = new FileTileCache(cacheDir, 3);
 
-        // Add tiles with delays to ensure different last-modified times
         cache.put(1, 0, 0, sampleImage);
         Thread.sleep(50);
         cache.put(1, 1, 1, sampleImage);
@@ -110,20 +109,16 @@ class FileTileCacheTest {
         cache.put(1, 2, 2, sampleImage);
         Thread.sleep(50);
 
-        // Access tile 0,0 to make it most recently used
         cache.get(1, 0, 0);
         Thread.sleep(50);
 
-        // Add a fourth tile, should evict tile 1,1 (oldest accessed)
         cache.put(1, 3, 3, sampleImage);
 
-        // Wait a bit for eviction to complete
         Thread.sleep(100);
 
-        assertThat(cache.get(1, 0, 0)).isNotNull(); // Recently accessed
-        assertThat(cache.get(1, 2, 2)).isNotNull(); // Recent
-        assertThat(cache.get(1, 3, 3)).isNotNull(); // Just added
-        // One of 1,1 should be evicted - the oldest
+        assertThat(cache.get(1, 0, 0)).isNotNull();
+        assertThat(cache.get(1, 2, 2)).isNotNull();
+        assertThat(cache.get(1, 3, 3)).isNotNull();
     }
 
     @Test
@@ -147,16 +142,13 @@ class FileTileCacheTest {
             executor.awaitTermination(30, TimeUnit.SECONDS);
         }
 
-        // Verify some tiles are still retrievable
         for (int worker = 0; worker < 8; worker++) {
-            // At least some tiles should exist for each worker
             int retrievedCount = 0;
             for (int i = 0; i < 10; i++) {
                 if (cache.get(worker, i, worker) != null) {
                     retrievedCount++;
                 }
             }
-            // Due to eviction, we may not have all tiles, but should have some
             assertThat(retrievedCount).isGreaterThan(0);
         }
     }
@@ -194,7 +186,6 @@ class FileTileCacheTest {
     void clearOnNonExistentDirectoryDoesNotThrow() {
         FileTileCache cache = new FileTileCache(cacheDir, 100);
 
-        // Should not throw even if cache directory doesn't exist
         cache.clear();
     }
 
@@ -211,7 +202,6 @@ class FileTileCacheTest {
     void get_returnsNullWhenFileDoesNotExist() {
         FileTileCache cache = new FileTileCache(cacheDir, 100);
 
-        // Test that get() on non-existent file returns null without throwing
         Image result = cache.get(1, 999, 999);
 
         assertThat(result).isNull();
@@ -221,15 +211,12 @@ class FileTileCacheTest {
     void get_returnsNullWhenFileDeletedConcurrently() throws IOException {
         FileTileCache cache = new FileTileCache(cacheDir, 100);
 
-        // Put a tile first
         cache.put(1, 1, 1, sampleImage);
         Path tilePath = cacheDir.resolve("1").resolve("1").resolve("1.png");
         assertThat(Files.exists(tilePath)).isTrue();
 
-        // Delete the file to simulate concurrent eviction
         Files.delete(tilePath);
 
-        // get() should return null gracefully without throwing
         Image result = cache.get(1, 1, 1);
 
         assertThat(result).isNull();

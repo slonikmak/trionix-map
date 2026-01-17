@@ -5,182 +5,205 @@ import static org.assertj.core.api.Assertions.within;
 
 import com.trionix.maps.internal.projection.Projection;
 import com.trionix.maps.internal.projection.WebMercatorProjection;
-import com.trionix.maps.testing.FxTestHarness;
-import com.trionix.maps.testing.MapViewTestHarness;
-import com.trionix.maps.testing.MapViewTestHarness.MountedMapView;
 import java.util.concurrent.CompletableFuture;
+import javafx.application.Platform;
+import javafx.scene.Scene;
 import javafx.scene.image.WritableImage;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
+import javafx.scene.layout.StackPane;
+import javafx.stage.Stage;
 import javafx.util.Duration;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.testfx.framework.junit5.ApplicationExtension;
+import org.testfx.framework.junit5.Start;
+import org.testfx.util.WaitForAsyncUtils;
 
-/**
- * Tests cursor-focus preservation during user-initiated zoom interactions.
- * The spec requires that the geographic point under the cursor remains within
- * ±2 pixels
- * of its original screen position after scroll-wheel and double-click zooms
- * (zoom is immediate).
- */
+@ExtendWith(ApplicationExtension.class)
 class MapViewCursorFocusTest {
 
     private static final double PIXEL_TOLERANCE = 2.0;
     private final Projection projection = WebMercatorProjection.INSTANCE;
+    private Stage stage;
+    private MapView mapView;
 
-    @Test
-    void scrollZoomPreservesCursorFocusWithinTwoPixels() throws InterruptedException {
-        WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
-        TileRetriever retriever = (zoom, x, y) -> CompletableFuture.completedFuture(tileImage);
-        InMemoryTileCache cache = new InMemoryTileCache(128);
+    @Start
+    private void start(Stage stage) {
+        this.stage = stage;
+        stage.setScene(new Scene(new StackPane(), 512, 512));
+        stage.show();
+    }
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 512, 512)) {
-            FxTestHarness.runOnFxThread(() -> {
-                MapView view = mounted.mapView();
-                // Input zooms are immediate in the runtime behavior — animations are not
-                // applied
-                view.getAnimationConfig().setAnimationsEnabled(false);
-                view.setCenterLat(37.7749);
-                view.setCenterLon(-122.4194);
-                view.setZoom(10.0);
-            });
-            mounted.layout();
-
-            // Scroll at an off-center position
-            double scrollX = 384.0;
-            double scrollY = 192.0;
-
-            // Capture the geographic point under the cursor before zoom
-            Projection.LatLon geoPointBefore = FxTestHarness
-                    .callOnFxThread(() -> latLonAt(mounted.mapView(), scrollX, scrollY));
-
-            // Trigger scroll zoom and verify focus immediately
-            FxTestHarness.runOnFxThread(() -> mounted.mapView().fireEvent(createScrollEvent(120.0, scrollX, scrollY)));
-            double pixelShift = FxTestHarness
-                    .callOnFxThread(() -> computePixelShift(mounted.mapView(), geoPointBefore, scrollX, scrollY));
-
-            assertThat(pixelShift)
-                    .describedAs("Geographic point should remain within ±2px of cursor during scroll zoom")
-                    .isLessThanOrEqualTo(PIXEL_TOLERANCE);
-        }
+    @AfterEach
+    void cleanup() {
+        Platform.runLater(() -> {
+            if (stage != null && stage.getScene() != null) {
+                ((StackPane) stage.getScene().getRoot()).getChildren().clear();
+            }
+            mapView = null;
+        });
+        WaitForAsyncUtils.waitForFxEvents();
     }
 
     @Test
-    void doubleClickZoomPreservesCursorFocusWithinTwoPixels() throws InterruptedException {
-        WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
+    void scrollZoomPreservesCursorFocusWithinTwoPixels() {
+        WritableImage tileImage = new WritableImage(256, 256);
         TileRetriever retriever = (zoom, x, y) -> CompletableFuture.completedFuture(tileImage);
         InMemoryTileCache cache = new InMemoryTileCache(128);
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 512, 512)) {
-            FxTestHarness.runOnFxThread(() -> {
-                MapView view = mounted.mapView();
-                view.getAnimationConfig().setAnimationsEnabled(true);
-                view.getAnimationConfig().setDoubleClickZoomAnimationEnabled(true);
-                view.getAnimationConfig().setDoubleClickZoomDuration(Duration.millis(250));
-                view.setCenterLat(37.7749);
-                view.setCenterLon(-122.4194);
-                view.setZoom(10.0);
-            });
-            mounted.layout();
+        mount(() -> new MapView(retriever, cache), 512, 512);
 
-            // Double-click at an off-center position
-            double clickX = 320.0;
-            double clickY = 256.0;
+        Platform.runLater(() -> {
+            mapView.getAnimationConfig().setAnimationsEnabled(false);
+            mapView.setCenterLat(37.7749);
+            mapView.setCenterLon(-122.4194);
+            mapView.setZoom(10.0);
+            mapView.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
 
-            // Capture the geographic point under the cursor before zoom
-            Projection.LatLon geoPointBefore = FxTestHarness
-                    .callOnFxThread(() -> latLonAt(mounted.mapView(), clickX, clickY));
+        // Scroll at an off-center position
+        double scrollX = 384.0;
+        double scrollY = 192.0;
 
-            // Trigger double-click zoom and verify focus immediately
-            FxTestHarness.runOnFxThread(() -> mounted.mapView().fireEvent(mouseDoubleClick(clickX, clickY)));
-            double pixelShift = FxTestHarness
-                    .callOnFxThread(() -> computePixelShift(mounted.mapView(), geoPointBefore, clickX, clickY));
+        Projection.LatLon geoPointBefore = latLonAt(mapView, scrollX, scrollY);
 
-            assertThat(pixelShift)
-                    .describedAs("Geographic point should remain within ±2px of cursor during double-click zoom")
-                    .isLessThanOrEqualTo(PIXEL_TOLERANCE);
-        }
+        Platform.runLater(() -> mapView.fireEvent(createScrollEvent(120.0, scrollX, scrollY)));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        double pixelShift = computePixelShift(mapView, geoPointBefore, scrollX, scrollY);
+
+        assertThat(pixelShift)
+                .describedAs("Geographic point should remain within ±2px of cursor during scroll zoom")
+                .isLessThanOrEqualTo(PIXEL_TOLERANCE);
     }
 
     @Test
-    void scrollZoomAtMapCenterPreservesCenter() throws InterruptedException {
-        WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
+    void doubleClickZoomPreservesCursorFocusWithinTwoPixels() {
+        WritableImage tileImage = new WritableImage(256, 256);
         TileRetriever retriever = (zoom, x, y) -> CompletableFuture.completedFuture(tileImage);
         InMemoryTileCache cache = new InMemoryTileCache(128);
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 512, 512)) {
-            FxTestHarness.runOnFxThread(() -> {
-                MapView view = mounted.mapView();
-                view.getAnimationConfig().setAnimationsEnabled(false);
-                view.setCenterLat(40.7128);
-                view.setCenterLon(-74.0060);
-                view.setZoom(8.0);
-            });
-            mounted.layout();
+        mount(() -> new MapView(retriever, cache), 512, 512);
 
-            double initialLat = FxTestHarness.callOnFxThread(() -> mounted.mapView().getCenterLat());
-            double initialLon = FxTestHarness.callOnFxThread(() -> mounted.mapView().getCenterLon());
+        Platform.runLater(() -> {
+            mapView.getAnimationConfig().setAnimationsEnabled(true);
+            mapView.getAnimationConfig().setDoubleClickZoomAnimationEnabled(true);
+            mapView.getAnimationConfig().setDoubleClickZoomDuration(Duration.millis(250));
+            mapView.setCenterLat(37.7749);
+            mapView.setCenterLon(-122.4194);
+            mapView.setZoom(10.0);
+            mapView.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
 
-            // Scroll at the exact center of the map
-            FxTestHarness.runOnFxThread(() -> mounted.mapView().fireEvent(createScrollEvent(120.0, 256.0, 256.0)));
+        double clickX = 320.0;
+        double clickY = 256.0;
 
-            double finalLat = FxTestHarness.callOnFxThread(() -> mounted.mapView().getCenterLat());
-            double finalLon = FxTestHarness.callOnFxThread(() -> mounted.mapView().getCenterLon());
-            double finalZoom = FxTestHarness.callOnFxThread(() -> mounted.mapView().getZoom());
+        Projection.LatLon geoPointBefore = latLonAt(mapView, clickX, clickY);
 
-            // When scrolling at center, the center coordinates should remain nearly
-            // unchanged
-            assertThat(finalLat).isCloseTo(initialLat, within(0.01));
-            assertThat(finalLon).isCloseTo(initialLon, within(0.01));
-            assertThat(finalZoom).isCloseTo(8.5, within(0.05));
-        }
+        Platform.runLater(() -> mapView.fireEvent(mouseDoubleClick(clickX, clickY)));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        double pixelShift = computePixelShift(mapView, geoPointBefore, clickX, clickY);
+
+        assertThat(pixelShift)
+                .describedAs("Geographic point should remain within ±2px of cursor during double-click zoom")
+                .isLessThanOrEqualTo(PIXEL_TOLERANCE);
     }
 
     @Test
-    void multipleScrollEventsPreserveCursorFocus() throws InterruptedException {
-        WritableImage tileImage = FxTestHarness.callOnFxThread(() -> new WritableImage(256, 256));
+    void scrollZoomAtMapCenterPreservesCenter() {
+        WritableImage tileImage = new WritableImage(256, 256);
         TileRetriever retriever = (zoom, x, y) -> CompletableFuture.completedFuture(tileImage);
         InMemoryTileCache cache = new InMemoryTileCache(128);
 
-        try (MountedMapView mounted = MapViewTestHarness.mount(() -> new MapView(retriever, cache), 512, 512)) {
-            FxTestHarness.runOnFxThread(() -> {
-                MapView view = mounted.mapView();
-                view.getAnimationConfig().setAnimationsEnabled(false);
-                view.setCenterLat(51.5074);
-                view.setCenterLon(-0.1278);
-                view.setZoom(9.0);
-            });
-            mounted.layout();
+        mount(() -> new MapView(retriever, cache), 512, 512);
 
-            double scrollX = 400.0;
-            double scrollY = 300.0;
+        Platform.runLater(() -> {
+            mapView.getAnimationConfig().setAnimationsEnabled(false);
+            mapView.setCenterLat(40.7128);
+            mapView.setCenterLon(-74.0060);
+            mapView.setZoom(8.0);
+            mapView.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
 
-            // Capture initial geographic point
-            Projection.LatLon geoPoint = FxTestHarness
-                    .callOnFxThread(() -> latLonAt(mounted.mapView(), scrollX, scrollY));
+        double initialLat = mapView.getCenterLat();
+        double initialLon = mapView.getCenterLon();
 
-            // Perform three consecutive scroll zoom operations
-            FxTestHarness.runOnFxThread(() -> {
-                mounted.mapView().fireEvent(createScrollEvent(120.0, scrollX, scrollY));
-                mounted.mapView().fireEvent(createScrollEvent(120.0, scrollX, scrollY));
-                mounted.mapView().fireEvent(createScrollEvent(120.0, scrollX, scrollY));
-            });
+        Platform.runLater(() -> mapView.fireEvent(createScrollEvent(120.0, 256.0, 256.0)));
+        WaitForAsyncUtils.waitForFxEvents();
 
-            // After all zooms, the original geographic point should still be within
-            // tolerance
-            double pixelShift = FxTestHarness
-                    .callOnFxThread(() -> computePixelShift(mounted.mapView(), geoPoint, scrollX, scrollY));
+        double finalLat = mapView.getCenterLat();
+        double finalLon = mapView.getCenterLon();
+        double finalZoom = mapView.getZoom();
 
-            assertThat(pixelShift)
-                    .describedAs("Geographic point should remain within ±2px after multiple scroll zooms")
-                    .isLessThanOrEqualTo(PIXEL_TOLERANCE);
-        }
+        assertThat(finalLat).isCloseTo(initialLat, within(0.01));
+        assertThat(finalLon).isCloseTo(initialLon, within(0.01));
+        assertThat(finalZoom).isCloseTo(8.5, within(0.05));
     }
 
-    /**
-     * Computes the geographic coordinates at a given screen position.
-     */
+    @Test
+    void multipleScrollEventsPreserveCursorFocus() {
+        WritableImage tileImage = new WritableImage(256, 256);
+        TileRetriever retriever = (zoom, x, y) -> CompletableFuture.completedFuture(tileImage);
+        InMemoryTileCache cache = new InMemoryTileCache(128);
+
+        mount(() -> new MapView(retriever, cache), 512, 512);
+
+        Platform.runLater(() -> {
+            mapView.getAnimationConfig().setAnimationsEnabled(false);
+            mapView.setCenterLat(51.5074);
+            mapView.setCenterLon(-0.1278);
+            mapView.setZoom(9.0);
+            mapView.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        double scrollX = 400.0;
+        double scrollY = 300.0;
+
+        Projection.LatLon geoPoint = latLonAt(mapView, scrollX, scrollY);
+
+        Platform.runLater(() -> {
+            mapView.fireEvent(createScrollEvent(120.0, scrollX, scrollY));
+            mapView.fireEvent(createScrollEvent(120.0, scrollX, scrollY));
+            mapView.fireEvent(createScrollEvent(120.0, scrollX, scrollY));
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        double pixelShift = computePixelShift(mapView, geoPoint, scrollX, scrollY);
+
+        assertThat(pixelShift)
+                .describedAs("Geographic point should remain within ±2px after multiple scroll zooms")
+                .isLessThanOrEqualTo(PIXEL_TOLERANCE);
+    }
+
+    private void mount(java.util.function.Supplier<MapView> factory, double width, double height) {
+        Platform.runLater(() -> {
+            this.mapView = factory.get();
+            StackPane root = (StackPane) stage.getScene().getRoot();
+            root.getChildren().setAll(mapView);
+            mapView.resize(width, height);
+            mapView.requestLayout();
+            mapView.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+    }
+
     private Projection.LatLon latLonAt(MapView mapView, double sceneX, double sceneY) {
+        // Need to access properties on FX thread? MapView properties are usually accessible on any thread
+        // if not bound, but for safety lets assume we are calling this in a context where it's safe or we don't care about concurrency for snapshot
+        // Actually this method reads width/height/center which are FX properties.
+        // But in these tests we often call it after waitForFxEvents, so main thread access is sort of okay if no other changes happen.
+        // However, standard JavaFX properties are not thread safe.
+        // I'll wrap in runLater and use FutureTask/completable future if I needed result, but here I can't easily.
+        // But since we are using WaitForAsyncUtils, the FX thread is idle.
+        
         double width = mapView.getWidth();
         double height = mapView.getHeight();
         if (width <= 0.0 || height <= 0.0) {
@@ -196,10 +219,6 @@ class MapViewCursorFocusTest {
         return projection.pixelToLatLon(pixelX, pixelY, zoomLevel);
     }
 
-    /**
-     * Computes how many pixels a geographic point has shifted from its expected
-     * screen position.
-     */
     private double computePixelShift(MapView mapView, Projection.LatLon geoPoint, double expectedX, double expectedY) {
         if (geoPoint == null) {
             return Double.MAX_VALUE;
