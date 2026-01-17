@@ -1,52 +1,61 @@
 package com.trionix.maps.control;
 
 import com.trionix.maps.MapView;
-import com.trionix.maps.testing.FxTestHarness;
+import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.testfx.framework.junit5.ApplicationExtension;
+import org.testfx.framework.junit5.Start;
+import org.testfx.util.WaitForAsyncUtils;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@ExtendWith(ApplicationExtension.class)
 class ScaleRulerControlTest {
+
+    @Start
+    private void start(Stage stage) {
+        // Initialize JavaFX toolkit
+    }
 
     @Test
     void constructor_withoutMapView_succeeds() {
+        WaitForAsyncUtils.waitForFxEvents();
         var control = new ScaleRulerControl();
         assertNull(control.getMapView());
     }
 
     @Test
     void constructor_withMapView_bindsToMap() {
-        FxTestHarness.runOnFxThread(() -> {
-            var mapView = new MapView();
-            var control = new ScaleRulerControl(mapView);
-            assertEquals(mapView, control.getMapView());
-        });
+        WaitForAsyncUtils.waitForFxEvents();
+        var mapView = new MapView();
+        var control = new ScaleRulerControl(mapView);
+        assertEquals(mapView, control.getMapView());
     }
 
     @Test
     void setMapView_updatesProperty() {
-        FxTestHarness.runOnFxThread(() -> {
-            var control = new ScaleRulerControl();
-            var mapView = new MapView();
+        WaitForAsyncUtils.waitForFxEvents();
+        var control = new ScaleRulerControl();
+        var mapView = new MapView();
 
-            control.setMapView(mapView);
-            assertEquals(mapView, control.getMapView());
-        });
+        control.setMapView(mapView);
+        assertEquals(mapView, control.getMapView());
     }
 
     @Test
     void setMapView_null_unbinds() {
-        FxTestHarness.runOnFxThread(() -> {
-            var mapView = new MapView();
-            var control = new ScaleRulerControl(mapView);
+        WaitForAsyncUtils.waitForFxEvents();
+        var mapView = new MapView();
+        var control = new ScaleRulerControl(mapView);
 
-            control.setMapView(null);
-            assertNull(control.getMapView());
-        });
+        control.setMapView(null);
+        assertNull(control.getMapView());
     }
 
     @Test
     void setPreferredWidthPixels_updatesProperty() {
+        WaitForAsyncUtils.waitForFxEvents();
         var control = new ScaleRulerControl();
         control.setPreferredWidthPixels(200.0);
         assertEquals(200.0, control.getPreferredWidthPixels());
@@ -54,66 +63,59 @@ class ScaleRulerControlTest {
 
     @Test
     void layoutChildren_withoutMapView_doesNotThrow() {
-        FxTestHarness.runOnFxThread(() -> {
-            var control = new ScaleRulerControl();
-            control.resize(200, 50);
-            assertDoesNotThrow(control::layout);
-        });
+        WaitForAsyncUtils.waitForFxEvents();
+        var control = new ScaleRulerControl();
+        control.resize(200, 50);
+        assertDoesNotThrow(control::layout);
     }
 
     @Test
     void layoutChildren_withMapView_doesNotThrow() {
-        FxTestHarness.runOnFxThread(() -> {
-            var mapView = new MapView();
-            mapView.resize(800, 600);
-            mapView.setCenterLat(50.0);
-            mapView.setCenterLon(10.0);
-            mapView.setZoom(5);
+        WaitForAsyncUtils.waitForFxEvents();
+        var mapView = new MapView();
+        mapView.resize(800, 600);
+        mapView.setCenterLat(50.0);
+        mapView.setCenterLon(10.0);
+        mapView.setZoom(5);
 
-            var control = new ScaleRulerControl(mapView);
-            control.resize(200, 50);
+        var control = new ScaleRulerControl(mapView);
+        control.resize(200, 50);
 
-            assertDoesNotThrow(control::layout);
-        });
+        assertDoesNotThrow(control::layout);
     }
 
     @Test
     void mapViewChanges_triggerLayout() {
-        FxTestHarness.runOnFxThread(() -> {
-            var mapView = new MapView();
-            mapView.resize(800, 600);
-            mapView.setZoom(5);
+        WaitForAsyncUtils.waitForFxEvents();
+        var mapView = new MapView();
+        mapView.resize(800, 600);
+        mapView.setZoom(5);
 
-            var control = new ScaleRulerControl(mapView);
-            control.resize(200, 50);
-            control.layout();
+        var control = new ScaleRulerControl(mapView);
+        control.resize(200, 50);
+        control.layout();
 
-            // Change zoom
-            mapView.setZoom(10);
-            mapView.layout();
+        mapView.setZoom(10);
+        mapView.layout();
 
-            // Should not throw
-            assertDoesNotThrow(control::layout);
-        });
+        assertDoesNotThrow(control::layout);
     }
 
     @Test
     void computePrefWidth_includesInsets() {
-        FxTestHarness.runOnFxThread(() -> {
-            var control = new ScaleRulerControl();
-            control.setPadding(new javafx.geometry.Insets(10));
+        WaitForAsyncUtils.waitForFxEvents();
+        var control = new ScaleRulerControl();
+        control.setPadding(new javafx.geometry.Insets(10));
 
-            double prefWidth = control.prefWidth(-1);
-            assertTrue(prefWidth > control.getPreferredWidthPixels());
-        });
+        double prefWidth = control.prefWidth(-1);
+        assertTrue(prefWidth > control.getPreferredWidthPixels());
     }
 
     @Test
     void computePrefHeight_isReasonable() {
-        FxTestHarness.runOnFxThread(() -> {
-            var control = new ScaleRulerControl();
-            double prefHeight = control.prefHeight(-1);
-            assertTrue(prefHeight > 0 && prefHeight < 100);
-        });
+        WaitForAsyncUtils.waitForFxEvents();
+        var control = new ScaleRulerControl();
+        double prefHeight = control.prefHeight(-1);
+        assertTrue(prefHeight > 0 && prefHeight < 100);
     }
 }

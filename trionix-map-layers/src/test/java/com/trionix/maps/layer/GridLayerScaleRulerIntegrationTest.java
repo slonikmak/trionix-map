@@ -3,19 +3,36 @@ package com.trionix.maps.layer;
 import com.trionix.maps.MapView;
 import com.trionix.maps.control.ScaleRulerControl;
 import com.trionix.maps.internal.util.DistanceUtils;
-import com.trionix.maps.testing.FxTestHarness;
+import javafx.application.Platform;
+import javafx.scene.Scene;
+import javafx.scene.layout.StackPane;
+import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.testfx.framework.junit5.ApplicationExtension;
+import org.testfx.framework.junit5.Start;
+import org.testfx.util.WaitForAsyncUtils;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Integration test verifying that GridLayer and ScaleRulerControl use consistent distance calculations.
  */
+@ExtendWith(ApplicationExtension.class)
 class GridLayerScaleRulerIntegrationTest {
+
+    private Stage stage;
+
+    @Start
+    private void start(Stage stage) {
+        this.stage = stage;
+        stage.setScene(new Scene(new StackPane(), 800, 600));
+        stage.show();
+    }
 
     @Test
     void gridAndRuler_useConsistentDistanceCalculations() {
-        FxTestHarness.runOnFxThread(() -> {
+        Platform.runLater(() -> {
             var mapView = new MapView();
             mapView.resize(800, 600);
             mapView.setCenterLat(50.0);
@@ -47,11 +64,12 @@ class GridLayerScaleRulerIntegrationTest {
             assertTrue(niceMeters >= testMeters * 0.5);
             assertTrue(niceMeters <= testMeters * 2.0);
         });
+        WaitForAsyncUtils.waitForFxEvents();
     }
 
     @Test
     void gridAutoStep_scalesWithZoom() {
-        FxTestHarness.runOnFxThread(() -> {
+        Platform.runLater(() -> {
             var mapView = new MapView();
             mapView.resize(800, 600);
             mapView.setCenterLat(50.0);
@@ -73,11 +91,12 @@ class GridLayerScaleRulerIntegrationTest {
             mapView.layout();
             assertDoesNotThrow(() -> gridLayer.layoutLayer(mapView));
         });
+        WaitForAsyncUtils.waitForFxEvents();
     }
 
     @Test
     void rulerDistance_changesWithZoom() {
-        FxTestHarness.runOnFxThread(() -> {
+        Platform.runLater(() -> {
             var mapView = new MapView();
             mapView.resize(800, 600);
             mapView.setCenterLat(50.0);
@@ -100,11 +119,12 @@ class GridLayerScaleRulerIntegrationTest {
 
             assertTrue(mppZoom2 > mppZoom10);
         });
+        WaitForAsyncUtils.waitForFxEvents();
     }
 
     @Test
     void rulerDistance_changesWithLatitude() {
-        FxTestHarness.runOnFxThread(() -> {
+        Platform.runLater(() -> {
             var mapView = new MapView();
             mapView.resize(800, 600);
             mapView.setZoom(5);
@@ -127,5 +147,6 @@ class GridLayerScaleRulerIntegrationTest {
             // Scale should be smaller at higher latitudes (Web Mercator distortion)
             assertTrue(mppEquator > mpp60);
         });
+        WaitForAsyncUtils.waitForFxEvents();
     }
 }

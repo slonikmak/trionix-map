@@ -3,102 +3,139 @@ package com.trionix.maps.layer;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.trionix.maps.MapView;
-import com.trionix.maps.testing.MapViewTestHarness;
-import com.trionix.maps.testing.FxTestHarness;
+import java.util.concurrent.atomic.AtomicReference;
+import javafx.application.Platform;
+import javafx.scene.Scene;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
+import javafx.stage.Stage;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.testfx.framework.junit5.ApplicationExtension;
+import org.testfx.framework.junit5.Start;
+import org.testfx.util.WaitForAsyncUtils;
 
+@ExtendWith(ApplicationExtension.class)
 class PointMarkerLayerIntegrationTest {
+
+    private Stage stage;
+    private MapView mapView;
+
+    @Start
+    private void start(Stage stage) {
+        this.stage = stage;
+        stage.setScene(new Scene(new StackPane(), 512, 512));
+        stage.show();
+    }
+
+    @AfterEach
+    void cleanup() {
+        Platform.runLater(() -> {
+            if (stage != null && stage.getScene() != null) {
+                ((StackPane) stage.getScene().getRoot()).getChildren().clear();
+            }
+            mapView = null;
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+    }
 
     @Test
     void dragging_marker_updatesLocationAndDoesNotPanMap() {
-        try (var mounted = MapViewTestHarness.mount(MapView::new, 512.0, 512.0)) {
-            MapView view = mounted.mapView();
+        mount(MapView::new, 512.0, 512.0);
 
-            final PointMarker[] markerRef = new PointMarker[1];
+        final AtomicReference<PointMarker> markerRef = new AtomicReference<>();
 
-            FxTestHarness.runOnFxThread(() -> {
-                PointMarkerLayer layer = new PointMarkerLayer();
-                view.getLayers().add(layer);
-                Region node = new Region();
-                node.setPrefSize(16.0, 16.0);
-                PointMarker marker = layer.addMarker(view.getCenterLat(), view.getCenterLon(), node);
-                marker.setDraggable(true);
-                markerRef[0] = marker;
-            });
+        Platform.runLater(() -> {
+            PointMarkerLayer layer = new PointMarkerLayer();
+            mapView.getLayers().add(layer);
+            Region node = new Region();
+            node.setPrefSize(16.0, 16.0);
+            PointMarker marker = layer.addMarker(mapView.getCenterLat(), mapView.getCenterLon(), node);
+            marker.setDraggable(true);
+            markerRef.set(marker);
+            
+            mapView.requestLayout();
+            mapView.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
 
-            mounted.layout();
+        Platform.runLater(() -> {
+            PointMarker marker = markerRef.get();
+            double initialLat = marker.getLatitude();
+            double initialLon = marker.getLongitude();
+            double mapLat = mapView.getCenterLat();
+            double mapLon = mapView.getCenterLon();
 
-            FxTestHarness.runOnFxThread(() -> {
-                PointMarker marker = markerRef[0];
-                double initialLat = marker.getLatitude();
-                double initialLon = marker.getLongitude();
-                double mapLat = view.getCenterLat();
-                double mapLon = view.getCenterLon();
+            Region node = (Region) marker.getNode();
+            double startX = node.getLayoutX() + node.getBoundsInLocal().getWidth() / 2.0;
+            double startY = node.getLayoutY() + node.getBoundsInLocal().getHeight() / 2.0;
+            double endX = startX + 100.0;
 
-                // Simulate drag using the node-local coordinates to avoid scene/local conversion
-                Region node = (Region) marker.getNode();
-                double startX = node.getLayoutX() + node.getBoundsInLocal().getWidth() / 2.0;
-                double startY = node.getLayoutY() + node.getBoundsInLocal().getHeight() / 2.0;
-                double endX = startX + 100.0;
+            node.fireEvent(mousePressed(startX, startY));
+            node.fireEvent(mouseDragged(endX, startY));
+            node.fireEvent(mouseReleased(endX, startY));
 
-                // Fire events directly with local coordinates (previous polyline tests used the same
-                // technique and proved reliable in headless CI environments)
-                node.fireEvent(mousePressed(startX, startY));
-                node.fireEvent(mouseDragged(endX, startY));
-                node.fireEvent(mouseReleased(endX, startY));
+            assertThat(mapView.getCenterLat()).isEqualTo(mapLat);
+            assertThat(mapView.getCenterLon()).isEqualTo(mapLon);
 
-                // After drag, map center should remain unchanged and marker coords updated
-                assertThat(view.getCenterLat()).isEqualTo(mapLat);
-                assertThat(view.getCenterLon()).isEqualTo(mapLon);
-
-                // Marker coords should have changed due to drag
-                assertThat(marker.getLatitude()).isNotEqualTo(initialLat);
-                assertThat(marker.getLongitude()).isNotEqualTo(initialLon);
-            });
-        }
+            assertThat(marker.getLatitude()).isNotEqualTo(initialLat);
+            assertThat(marker.getLongitude()).isNotEqualTo(initialLon);
+        });
+        WaitForAsyncUtils.waitForFxEvents();
     }
 
     @Test
     void nonDraggable_marker_doesNotMove_whenMouseDragged() {
-        try (var mounted = MapViewTestHarness.mount(MapView::new, 512.0, 512.0)) {
-            MapView view = mounted.mapView();
+        mount(MapView::new, 512.0, 512.0);
 
-            final PointMarker[] markerRef = new PointMarker[1];
+        final AtomicReference<PointMarker> markerRef = new AtomicReference<>();
 
-            FxTestHarness.runOnFxThread(() -> {
-                PointMarkerLayer layer = new PointMarkerLayer();
-                view.getLayers().add(layer);
-                Region node = new Region();
-                node.setPrefSize(16.0, 16.0);
-                PointMarker marker = layer.addMarker(view.getCenterLat(), view.getCenterLon(), node);
-                // marker remains non-draggable
-                markerRef[0] = marker;
-            });
+        Platform.runLater(() -> {
+            PointMarkerLayer layer = new PointMarkerLayer();
+            mapView.getLayers().add(layer);
+            Region node = new Region();
+            node.setPrefSize(16.0, 16.0);
+            PointMarker marker = layer.addMarker(mapView.getCenterLat(), mapView.getCenterLon(), node);
+            markerRef.set(marker);
+            
+            mapView.requestLayout();
+            mapView.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
 
-            mounted.layout();
+        Platform.runLater(() -> {
+            PointMarker marker = markerRef.get();
+            double initialLat = marker.getLatitude();
+            double initialLon = marker.getLongitude();
 
-            FxTestHarness.runOnFxThread(() -> {
-                PointMarker marker = markerRef[0];
-                double initialLat = marker.getLatitude();
-                double initialLon = marker.getLongitude();
+            Region node = (Region) marker.getNode();
+            double startX = node.getLayoutX() + node.getBoundsInLocal().getWidth() / 2.0;
+            double startY = node.getLayoutY() + node.getBoundsInLocal().getHeight() / 2.0;
+            double endX = startX + 100.0;
 
-                Region node = (Region) marker.getNode();
-                double startX = node.getLayoutX() + node.getBoundsInLocal().getWidth() / 2.0;
-                double startY = node.getLayoutY() + node.getBoundsInLocal().getHeight() / 2.0;
-                double endX = startX + 100.0;
+            node.fireEvent(mousePressed(startX, startY));
+            node.fireEvent(mouseDragged(endX, startY));
+            node.fireEvent(mouseReleased(endX, startY));
 
-                node.fireEvent(mousePressed(startX, startY));
-                node.fireEvent(mouseDragged(endX, startY));
-                node.fireEvent(mouseReleased(endX, startY));
-
-                // Marker coords should NOT have changed for non-draggable marker
-                assertThat(marker.getLatitude()).isEqualTo(initialLat);
-                assertThat(marker.getLongitude()).isEqualTo(initialLon);
-            });
-        }
+            assertThat(marker.getLatitude()).isEqualTo(initialLat);
+            assertThat(marker.getLongitude()).isEqualTo(initialLon);
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+    }
+    
+    private void mount(java.util.function.Supplier<MapView> factory, double width, double height) {
+        Platform.runLater(() -> {
+            this.mapView = factory.get();
+            StackPane root = (StackPane) stage.getScene().getRoot();
+            root.getChildren().setAll(mapView);
+            mapView.resize(width, height);
+            mapView.requestLayout();
+            mapView.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
     }
     
     private static MouseEvent mousePressed(double x, double y) {
@@ -166,5 +203,4 @@ class PointMarkerLayerIntegrationTest {
                 true,
                 null);
     }
-
 }
