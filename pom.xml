@@ -122,6 +122,16 @@
                     <version>3.2.5</version>
                     <configuration>
                         <useModulePath>false</useModulePath>
+                        <argLine>
+                            -Djava.awt.headless=true
+                            -Dtestfx.robot=glass
+                            -Dtestfx.headless=true
+                            -Dprism.order=sw
+                            -Dprism.text=t2k
+                            --add-exports javafx.graphics/com.sun.javafx.application=ALL-UNNAMED
+                            --add-opens javafx.graphics/com.sun.glass.ui=ALL-UNNAMED
+                            --add-opens javafx.graphics/javafx.stage=ALL-UNNAMED
+                        </argLine>
                     </configuration>
                 </plugin>
                 <plugin>
