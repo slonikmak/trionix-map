@@ -112,12 +112,16 @@ class TieredTileCacheIntegrationTest {
     }
 
     @Test
-    void tilesPersistAcrossL1ClearWhenL2IsDisk() {
+    void tilesPersistAcrossL1ClearWhenL2IsDisk() throws Exception {
         var l1 = new InMemoryTileCache(100);
         var l2 = new FileTileCache(cacheDir, 500);
         var tiered = new TieredTileCache(List.of(l1, l2));
 
         tiered.put(5, 10, 15, sampleImage);
+
+        // Wait for async disk write in TieredTileCache
+        org.testfx.util.WaitForAsyncUtils.waitFor(5, java.util.concurrent.TimeUnit.SECONDS, 
+                () -> l2.get(5, 10, 15) != null);
 
         assertThat(l1.get(5, 10, 15)).isNotNull();
         assertThat(l2.get(5, 10, 15)).isNotNull();

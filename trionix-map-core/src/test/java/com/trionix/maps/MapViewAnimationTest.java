@@ -82,14 +82,18 @@ class MapViewAnimationTest {
         WaitForAsyncUtils.waitForFxEvents();
         
         Thread.sleep(150);
-        double zoomBeforeScroll = mapView.getZoom();
         
-        Platform.runLater(() -> mapView.fireEvent(createScrollEvent(120.0)));
+        java.util.concurrent.atomic.AtomicReference<Double> zoomAtScroll = new java.util.concurrent.atomic.AtomicReference<>();
+        Platform.runLater(() -> {
+            zoomAtScroll.set(mapView.getZoom());
+            mapView.fireEvent(createScrollEvent(120.0));
+        });
+        
         Thread.sleep(1200);
         WaitForAsyncUtils.waitForFxEvents();
-
+        
         double finalZoom = mapView.getZoom();
-        assertThat(finalZoom).isCloseTo(zoomBeforeScroll + 0.5, within(0.01));
+        assertThat(finalZoom).isCloseTo(zoomAtScroll.get() + 0.5, within(0.01));
         assertThat(finalZoom).isLessThan(6.0);
     }
 
