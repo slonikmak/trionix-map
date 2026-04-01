@@ -132,6 +132,55 @@ class MapViewIntegrationTest {
     }
 
     @Test
+    void redrawsCanvasWhenTilesArriveWithoutExtraLayoutPulse() throws Exception {
+        var retriever = new RecordingTileRetriever();
+        var cache = new InMemoryTileCache(64);
+        var centerLat = 0.0;
+        var centerLon = 0.0;
+        var zoom = 2.0;
+
+        mount(() -> {
+            var view = new MapView(retriever, cache);
+            view.setCenterLat(centerLat);
+            view.setCenterLon(centerLon);
+            view.setZoom(zoom);
+            return view;
+        }, 256, 256);
+
+        var state = new MapState();
+        state.setCenterLat(centerLat);
+        state.setCenterLon(centerLon);
+        state.setZoom(zoom);
+        state.setViewportSize(256.0, 256.0);
+        var expectedTiles = state.visibleTiles();
+
+        var beforeSnapshot = new WritableImage(256, 256);
+        Platform.runLater(() -> mapView.snapshot(null, beforeSnapshot));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        var placeholder = PlaceholderTileFactory.placeholder();
+        var placeholderColor = colorAt(placeholder, 10, 10);
+        var beforeColor = colorAt(beforeSnapshot, 100, 100);
+        assertThat(beforeColor.getRed()).isCloseTo(placeholderColor.getRed(), within(0.01));
+        assertThat(beforeColor.getGreen()).isCloseTo(placeholderColor.getGreen(), within(0.01));
+        assertThat(beforeColor.getBlue()).isCloseTo(placeholderColor.getBlue(), within(0.01));
+
+        var requests = retriever.awaitRequests(expectedTiles.size(), Duration.ofSeconds(1));
+        var tileImage = solidImage(Color.DARKORANGE);
+        requests.forEach(request -> request.future().complete(tileImage));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        var afterSnapshot = new WritableImage(256, 256);
+        Platform.runLater(() -> mapView.snapshot(null, afterSnapshot));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        var afterColor = colorAt(afterSnapshot, 100, 100);
+        assertThat(afterColor.getRed()).isCloseTo(Color.DARKORANGE.getRed(), within(0.01));
+        assertThat(afterColor.getGreen()).isCloseTo(Color.DARKORANGE.getGreen(), within(0.01));
+        assertThat(afterColor.getBlue()).isCloseTo(Color.DARKORANGE.getBlue(), within(0.01));
+    }
+
+    @Test
     void panZoomLoopMaintainsHighFrameRate() {
         var tileImage = new WritableImage(256, 256);
         TileRetriever retriever = (zoom, x, y) -> CompletableFuture.completedFuture(tileImage);
@@ -404,6 +453,17 @@ class MapViewIntegrationTest {
     private static Color colorAt(Image image, int x, int y) {
         PixelReader reader = image.getPixelReader();
         return reader.getColor(x, y);
+    }
+
+    private static WritableImage solidImage(Color color) {
+        var image = new WritableImage(256, 256);
+        var writer = image.getPixelWriter();
+        for (int y = 0; y < 256; y++) {
+            for (int x = 0; x < 256; x++) {
+                writer.setColor(x, y, color);
+            }
+        }
+        return image;
     }
 
     private static final class TrackingLayer extends MapLayer {

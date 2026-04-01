@@ -1,5 +1,6 @@
 package com.trionix.maps;
 
+import com.trionix.maps.internal.concurrent.TileExecutors;
 import java.util.List;
 import java.util.Objects;
 import javafx.scene.image.Image;
@@ -62,7 +63,19 @@ public final class TieredTileCache implements TileCache {
     public void put(int zoom, long x, long y, Image image) {
         Objects.requireNonNull(image, "image");
         for (TileCache tier : tiers) {
+            if (tier instanceof FileTileCache) {
+                TileExecutors.tileExecutor().execute(() -> writeBestEffort(tier, zoom, x, y, image));
+                continue;
+            }
             tier.put(zoom, x, y, image);
+        }
+    }
+
+    private void writeBestEffort(TileCache tier, int zoom, long x, long y, Image image) {
+        try {
+            tier.put(zoom, x, y, image);
+        } catch (RuntimeException e) {
+            // Disk cache failures must not block tile delivery to the UI.
         }
     }
 

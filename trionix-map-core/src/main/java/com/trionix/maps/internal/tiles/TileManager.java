@@ -10,16 +10,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import javafx.application.Platform;
 import javafx.scene.image.Image;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Coordinates cache lookups, asynchronous tile retrieval, and generation-based
  * invalidation to ensure only current tiles are rendered.
  */
 public final class TileManager {
-
-    private static final Logger LOG = LoggerFactory.getLogger(TileManager.class);
 
     private final TileCache cache;
     private final TileRetriever retriever;
@@ -73,13 +69,8 @@ public final class TileManager {
     private void scheduleLoad(TileCoordinate coordinate, int generation, TileConsumer consumer) {
         // Check if already loading this tile
         if (!pendingRequests.add(coordinate)) {
-            LOG.debug("Skipping duplicate load for z={}, x={}, y={}", 
-                    coordinate.zoom(), coordinate.x(), coordinate.y());
             return; // Skip duplicate request
         }
-
-        LOG.debug("Starting load for z={}, x={}, y={}", 
-                coordinate.zoom(), coordinate.x(), coordinate.y());
 
         // Use the retriever's async method directly
         retriever.loadTile(coordinate.zoom(), coordinate.x(), coordinate.y())
@@ -88,8 +79,6 @@ public final class TileManager {
                     pendingRequests.remove(coordinate);
 
                     if (error != null) {
-                        LOG.warn("Failed to load tile z={}, x={}, y={}",
-                                coordinate.zoom(), coordinate.x(), coordinate.y(), error);
                         return;
                     }
 
@@ -100,9 +89,6 @@ public final class TileManager {
                         // use cached tiles during redraw and ignore tiles not in the
                         // current visible set
                         deliverOnFxThread(coordinate, image, consumer);
-                    } else {
-                        LOG.warn("Failed to decode tile z={}, x={}, y={}",
-                                coordinate.zoom(), coordinate.x(), coordinate.y());
                     }
                 });
     }

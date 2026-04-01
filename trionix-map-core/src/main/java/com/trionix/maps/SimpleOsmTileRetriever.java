@@ -58,23 +58,38 @@ public final class SimpleOsmTileRetriever implements TileRetriever {
                 .header("User-Agent", userAgent)
                 .build();
 
-        return CompletableFuture.runAsync(() -> {
+        return CompletableFuture.supplyAsync(() -> {
+            boolean acquired = false;
             try {
                 concurrencyLimiter.acquire();
+                acquired = true;
+                HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+                if (response.statusCode() != 200) {
+                    throw new TileRetrievalException(
+                            "Unexpected HTTP status " + response.statusCode() + " for tile " + tileUri);
+                }
+
+                Image image = new Image(new ByteArrayInputStream(response.body()));
+                if (image.isError()) {
+                    Throwable exception = image.getException();
+                    throw new TileRetrievalException(
+                            "Failed to decode tile " + tileUri,
+                            exception instanceof Exception ex ? ex : null);
+                }
+                return image;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new TileRetrievalException("Interrupted while waiting for permit", e);
+            } catch (TileRetrievalException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new TileRetrievalException("Failed to load tile " + tileUri, e);
+            } finally {
+                if (acquired) {
+                    concurrencyLimiter.release();
+                }
             }
-        }, TileExecutors.tileExecutor())
-        .thenCompose(ignored -> httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray()))
-        .thenApply(response -> {
-            if (response.statusCode() != 200) {
-                throw new TileRetrievalException(
-                        "Unexpected HTTP status " + response.statusCode() + " for tile " + tileUri);
-            }
-            return new Image(new ByteArrayInputStream(response.body()));
-        })
-        .whenComplete((result, error) -> concurrencyLimiter.release());
+        }, TileExecutors.tileExecutor());
     }
 
     private static URI sanitizeBaseUrl(String baseUrl) {

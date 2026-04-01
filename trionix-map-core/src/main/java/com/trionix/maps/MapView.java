@@ -8,8 +8,11 @@ import com.trionix.maps.internal.MapState;
 import com.trionix.maps.internal.interaction.MapInteractionHandler;
 import com.trionix.maps.internal.projection.Projection;
 import com.trionix.maps.internal.projection.WebMercatorProjection;
+import com.trionix.maps.internal.tiles.PlaceholderTileFactory;
+import com.trionix.maps.internal.tiles.TileCoordinate;
+import com.trionix.maps.internal.tiles.TileManager;
 import com.trionix.maps.layer.MapLayer;
-import com.trionix.maps.layer.TileLayer;
+import javafx.animation.AnimationTimer;
 import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
@@ -27,25 +30,24 @@ import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
+import javafx.scene.canvas.Canvas;
+import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.image.Image;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Region;
 import javafx.util.Duration;
 
 /**
  * JavaFX {@link Region} that renders OpenStreetMap raster tiles and exposes
- * observable center
- * and zoom properties for binding-based applications. Unless otherwise noted,
- * all mutating API
- * calls must occur on the JavaFX Application Thread. Convenience methods such
- * as
- * {@link #flyTo(double, double, double, javafx.util.Duration)} will internally
- * marshal to the FX
- * thread when necessary.
+ * observable center and zoom properties for binding-based applications.
  */
 public final class MapView extends Region {
 
     private static final int DEFAULT_CACHE_CAPACITY = 500;
     private static final double PREF_SIZE = 512.0;
+    private static final Image PLACEHOLDER = PlaceholderTileFactory.placeholder();
+    private static final double REDRAW_EPSILON = 0.001;
+    private static final long REDRAW_WINDOW_NANOS = 1_500_000_000L;
 
     private final DoubleProperty centerLat = createNormalizedProperty(
             "centerLat", v -> clampLatitude(v), 0.0);
@@ -58,197 +60,107 @@ public final class MapView extends Region {
     private boolean enableDoubleClickZoom = true;
 
     private final MapState mapState = new MapState();
+    private final TileManager tileManager;
     private final Projection projection = WebMercatorProjection.INSTANCE;
+    private final Canvas tileCanvas = new Canvas();
     private final Pane layerPane = new Pane();
+    private final GraphicsContext graphics = tileCanvas.getGraphicsContext2D();
     private final ObservableList<MapLayer> layers = FXCollections.observableArrayList();
     private final MapInteractionHandler interactionHandler;
-    private TileLayer internalTileLayer;
+    private final AnimationTimer redrawTimer = new AnimationTimer() {
+        @Override
+        public void handle(long now) {
+            if (now >= redrawUntilNanos) {
+                stop();
+                return;
+            }
+            forceCanvasInvalidation();
+        }
+    };
     private Timeline navigationTimeline;
     private Runnable activeAnimationCleanup;
 
-    /**
-     * Creates a {@code MapView} that uses {@link SimpleOsmTileRetriever} and an
-     * {@link InMemoryTileCache} sized for roughly five hundred tiles.
-     */
+    private List<TileCoordinate> currentVisibleTiles = List.of();
+    private boolean refreshPending;
+    private boolean redrawToggle;
+    private long redrawUntilNanos;
+
     public MapView() {
         this(new SimpleOsmTileRetriever(), new InMemoryTileCache(DEFAULT_CACHE_CAPACITY));
     }
 
-    /**
-     * Creates a {@code MapView} backed by the provided retriever and cache
-     * implementations.
-     *
-     * @param retriever strategy used to fetch tiles; must be thread-safe because it
-     *                  is invoked from
-     *                  background threads
-     * @param cache     in-memory cache for decoded {@link javafx.scene.image.Image}
-     *                  instances; must be
-     *                  thread-safe because
-     *                  it is accessed concurrently by the tile loader
-     */
     public MapView(TileRetriever retriever, TileCache cache) {
         Objects.requireNonNull(retriever, "retriever");
         Objects.requireNonNull(cache, "cache");
+        this.tileManager = new TileManager(cache, retriever);
         this.interactionHandler = new MapInteractionHandler(this);
 
         initializeProperties();
         initializeSceneGraph();
         interactionHandler.install();
         initializeLayers();
-
-        // Add internal tile layer (not part of user-facing layers list)
-        internalTileLayer = new TileLayer(retriever, cache);
-        internalTileLayer.attachToMapView(this);
-        layerPane.getChildren().add(0, internalTileLayer); // Add at bottom
-        internalTileLayer.layerAdded(this);
     }
 
-    /**
-     * Returns the live list of {@link MapLayer layers} rendered above the tile
-     * canvas. The list is
-     * observable, and modifications must occur on the JavaFX Application Thread.
-     */
     public ObservableList<MapLayer> getLayers() {
         return layers;
     }
 
-    /**
-     * Returns the projection used by this map view.
-     * 
-     * @return the Web Mercator projection instance
-     */
     public Projection getProjection() {
         return projection;
     }
 
-    /**
-     * Returns the observable latitude property. Values are automatically clamped to
-     * the valid
-     * Web Mercator latitude range.
-     */
     public DoubleProperty centerLatProperty() {
         return centerLat;
     }
 
-    /**
-     * Returns the current latitude expressed in degrees.
-     */
     public double getCenterLat() {
         return centerLat.get();
     }
 
-    /**
-     * Updates the center latitude in degrees. Values outside the projection range
-     * are clamped.
-     */
     public void setCenterLat(double latitude) {
         centerLat.set(latitude);
     }
 
-    /**
-     * Returns the observable longitude property. Longitudes are normalized to the
-     * {@code [-180,
-     * 180)} range.
-     */
     public DoubleProperty centerLonProperty() {
         return centerLon;
     }
 
-    /**
-     * Returns the current center longitude in degrees.
-     */
     public double getCenterLon() {
         return centerLon.get();
     }
 
-    /**
-     * Updates the center longitude in degrees. Values are normalized to the Web
-     * Mercator range.
-     */
     public void setCenterLon(double longitude) {
         centerLon.set(longitude);
     }
 
-    /**
-     * Returns the observable zoom property. Zoom levels are clamped to the
-     * supported discrete
-     * range (defaults: 1–19).
-     */
     public DoubleProperty zoomProperty() {
         return zoom;
     }
 
-    /**
-     * Returns the current zoom value. Fractional zooms are supported and rendered
-     * via smooth
-     * scaling.
-     */
     public double getZoom() {
         return zoom.get();
     }
 
-    /**
-     * Returns the current zoom level as a discrete integer (floor of the zoom
-     * value).
-     * This is the zoom level used for tile calculations.
-     * 
-     * @return discrete zoom level, always >= 0
-     */
     public int getDiscreteZoomLevel() {
         return mapState.discreteZoomLevel();
     }
 
-    /**
-     * Updates the zoom level. Values are clamped to
-     * {@link MapState#DEFAULT_MIN_ZOOM} and
-     * {@link MapState#DEFAULT_MAX_ZOOM}.
-     */
     public void setZoom(double zoomLevel) {
         zoom.set(zoomLevel);
     }
 
-    /**
-     * Returns whether double-click zoom is enabled.
-     */
     public boolean isEnableDoubleClickZoom() {
         return enableDoubleClickZoom;
     }
 
-    /**
-     * Enables or disables double-click zoom functionality. When enabled (default),
-     * double-clicking
-     * the primary mouse button zooms in by one level around the cursor position.
-     *
-     * @param enable {@code true} to enable double-click zoom, {@code false} to
-     *               disable
-     */
     public void setEnableDoubleClickZoom(boolean enable) {
         this.enableDoubleClickZoom = enable;
     }
 
-    /**
-     * Returns the animation configuration responsible for scroll, double-click,
-     * touch, and fly-to
-     * transitions. Changes take effect immediately and allow callers to customize
-     * durations,
-     * easing, or disable animations entirely.
-     */
     public MapAnimationConfig getAnimationConfig() {
         return animationConfig;
     }
 
-    /**
-     * Smoothly animates the viewport to the provided center and zoom using a JavaFX
-     * {@link Timeline}. A zero or negative duration jumps immediately. This method
-     * accepts calls
-     * from any thread and will marshal to the JavaFX Application Thread
-     * automatically.
-     *
-     * @param latitude  target latitude
-     * @param longitude target longitude
-     * @param zoomLevel target zoom level
-     * @param duration  animation duration (must be finite)
-     */
     public void flyTo(double latitude, double longitude, double zoomLevel, Duration duration) {
         Objects.requireNonNull(duration, "duration");
         if (duration.isIndefinite() || duration.isUnknown()) {
@@ -283,14 +195,30 @@ public final class MapView extends Region {
     protected void layoutChildren() {
         double width = snapSizeX(getWidth());
         double height = snapSizeY(getHeight());
+        tileCanvas.setWidth(width);
+        tileCanvas.setHeight(height);
+        tileCanvas.relocate(0.0, 0.0);
         layerPane.resizeRelocate(0.0, 0.0, width, height);
 
         if (width != mapState.getViewportWidth() || height != mapState.getViewportHeight()) {
             mapState.setViewportSize(width, height);
-            requestLayout();
+            scheduleRefresh();
         }
 
+        drawTiles(width, height);
+        forceCanvasInvalidation();
         layoutLayerNodes(width, height);
+    }
+
+    private void scheduleRefresh() {
+        if (refreshPending) {
+            return;
+        }
+        refreshPending = true;
+        Platform.runLater(() -> {
+            refreshPending = false;
+            refreshTiles();
+        });
     }
 
     private void initializeProperties() {
@@ -300,23 +228,52 @@ public final class MapView extends Region {
 
         centerLat.addListener((obs, oldValue, newValue) -> {
             mapState.setCenterLat(newValue.doubleValue());
-            requestLayout();
+            scheduleRefresh();
         });
         centerLon.addListener((obs, oldValue, newValue) -> {
             mapState.setCenterLon(newValue.doubleValue());
-            requestLayout();
+            scheduleRefresh();
         });
         zoom.addListener((obs, oldValue, newValue) -> {
             mapState.setZoom(newValue.doubleValue());
-            requestLayout();
+            scheduleRefresh();
         });
     }
 
     private void initializeSceneGraph() {
+        tileCanvas.setManaged(false);
+        tileCanvas.setMouseTransparent(true);
         layerPane.setManaged(false);
         layerPane.setPickOnBounds(false);
-        getChildren().add(layerPane);
+        getChildren().addAll(tileCanvas, layerPane);
         getStyleClass().add("map-view");
+    }
+
+    private void refreshTiles() {
+        if (mapState.getViewportWidth() <= 0 || mapState.getViewportHeight() <= 0) {
+            return;
+        }
+        List<TileCoordinate> visible = mapState.visibleTiles();
+        currentVisibleTiles = visible;
+        tileManager.refreshTiles(visible, (coordinate, image) -> redrawLoadedTile(coordinate));
+        extendRedrawWindow();
+        requestLayout();
+    }
+
+    private void redrawLoadedTile(TileCoordinate coordinate) {
+        if (!currentVisibleTiles.contains(coordinate)) {
+            return;
+        }
+
+        double width = tileCanvas.getWidth();
+        double height = tileCanvas.getHeight();
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+
+        drawTiles(width, height);
+        forceCanvasInvalidation();
+        extendRedrawWindow();
     }
 
     private void initializeLayers() {
@@ -341,13 +298,46 @@ public final class MapView extends Region {
         });
     }
 
-    private void layoutLayerNodes(double width, double height) {
-        // Layout internal tile layer first
-        if (internalTileLayer != null) {
-            internalTileLayer.resizeRelocate(0.0, 0.0, width, height);
-            internalTileLayer.layoutLayer(this);
+    private void drawTiles(double width, double height) {
+        graphics.clearRect(0.0, 0.0, width, height);
+        if (currentVisibleTiles.isEmpty()) {
+            return;
         }
-        // Layout user layers
+        int zoomLevel = mapState.discreteZoomLevel();
+        Projection.PixelCoordinate centerPixels = projection.latLonToPixel(
+                mapState.getCenterLat(), mapState.getCenterLon(), zoomLevel);
+        double halfWidth = width / 2.0;
+        double halfHeight = height / 2.0;
+        double tileSize = Projection.TILE_SIZE;
+
+        for (TileCoordinate tile : currentVisibleTiles) {
+            Image cached = tileManager.cachedTile(tile);
+            Image image = cached != null ? cached : PLACEHOLDER;
+            double tileOriginX = tile.x() * tileSize;
+            double tileOriginY = tile.y() * tileSize;
+            double screenX = tileOriginX - centerPixels.x() + halfWidth;
+            double screenY = tileOriginY - centerPixels.y() + halfHeight;
+            graphics.drawImage(image, screenX, screenY, tileSize, tileSize);
+        }
+    }
+
+    private void extendRedrawWindow() {
+        redrawUntilNanos = System.nanoTime() + REDRAW_WINDOW_NANOS;
+        redrawTimer.start();
+    }
+
+    private void forceCanvasInvalidation() {
+        double offset = redrawToggle ? REDRAW_EPSILON : 0.0;
+        tileCanvas.setTranslateX(offset);
+        layerPane.setTranslateX(offset);
+        redrawToggle = !redrawToggle;
+        Platform.requestNextPulse();
+    }
+
+    private void layoutLayerNodes(double width, double height) {
+        if (layers.isEmpty()) {
+            return;
+        }
         for (MapLayer layer : layers) {
             layer.resizeRelocate(0.0, 0.0, width, height);
             layer.layoutLayer(this);
@@ -361,14 +351,11 @@ public final class MapView extends Region {
         }
         layer.attachToMapView(this);
         layerPane.getChildren().remove(layer);
-        // Offset by 1 to account for internal tile layer at index 0
-        int baseOffset = (internalTileLayer != null) ? 1 : 0;
-        int boundedIndex = Math.max(0, Math.min(index, layerPane.getChildren().size() - baseOffset));
-        int insertAt = baseOffset + boundedIndex;
-        if (insertAt >= layerPane.getChildren().size()) {
+        int boundedIndex = Math.max(0, Math.min(index, layerPane.getChildren().size()));
+        if (boundedIndex >= layerPane.getChildren().size()) {
             layerPane.getChildren().add(layer);
         } else {
-            layerPane.getChildren().add(insertAt, layer);
+            layerPane.getChildren().add(boundedIndex, layer);
         }
         layer.layerAdded(this);
     }
@@ -395,12 +382,6 @@ public final class MapView extends Region {
         });
     }
 
-    /**
-     * Pans the map by the specified pixel delta.
-     *
-     * @param deltaX pixel offset in X direction (positive moves map content right)
-     * @param deltaY pixel offset in Y direction (positive moves map content down)
-     */
     public void panByPixelsDelta(double deltaX, double deltaY) {
         if (deltaX == 0.0 && deltaY == 0.0) {
             return;
@@ -416,14 +397,6 @@ public final class MapView extends Region {
         setCenterLon(latLon.longitude());
     }
 
-    /**
-     * Zooms the map by the specified delta around the given pivot point.
-     *
-     * @param zoomDelta amount to change zoom by (positive zooms in, negative zooms
-     *                  out)
-     * @param pivotX    x coordinate of the zoom pivot point
-     * @param pivotY    y coordinate of the zoom pivot point
-     */
     public void zoomAroundPointBy(double zoomDelta, double pivotX, double pivotY) {
         zoomAroundPoint(zoomDelta, pivotX, pivotY);
     }
@@ -549,9 +522,6 @@ public final class MapView extends Region {
         timeline.play();
     }
 
-    /**
-     * Cancels any active navigation or zoom animation.
-     */
     public void cancelActiveAnimation() {
         if (navigationTimeline != null) {
             navigationTimeline.stop();
@@ -585,37 +555,16 @@ public final class MapView extends Region {
         return projection.pixelToLatLon(pixelX, pixelY, zoomLevel);
     }
 
-    /**
-     * Converts local (map-relative) coordinates to geographic coordinates.
-     * 
-     * @param localX x coordinate relative to the map view
-     * @param localY y coordinate relative to the map view
-     * @return GeoPoint at the specified location, or null if the view has no size
-     */
     public GeoPoint localToGeoPoint(double localX, double localY) {
         Projection.LatLon latLon = latLonAt(localX, localY);
         return latLon != null ? GeoPoint.of(latLon.latitude(), latLon.longitude()) : null;
     }
 
-    /**
-     * Converts scene coordinates to geographic coordinates.
-     * 
-     * @param sceneX x coordinate in the scene
-     * @param sceneY y coordinate in the scene
-     * @return GeoPoint at the specified location, or null if the view has no size
-     */
     public GeoPoint sceneToGeoPoint(double sceneX, double sceneY) {
         var local = sceneToLocal(sceneX, sceneY);
         return localToGeoPoint(local.getX(), local.getY());
     }
 
-    /**
-     * Converts geographic coordinates to local (map-relative) coordinates.
-     * 
-     * @param latitude  latitude in degrees
-     * @param longitude longitude in degrees
-     * @return Point2D with local x,y coordinates, or null if the view has no size
-     */
     public javafx.geometry.Point2D geoPointToLocal(double latitude, double longitude) {
         double width = getWidth();
         double height = getHeight();

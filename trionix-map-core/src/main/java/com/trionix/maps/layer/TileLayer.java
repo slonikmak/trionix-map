@@ -8,11 +8,12 @@ import com.trionix.maps.internal.projection.Projection;
 import com.trionix.maps.internal.tiles.TileCoordinate;
 import com.trionix.maps.internal.tiles.TileManager;
 import com.trionix.maps.internal.tiles.PlaceholderTileFactory;
+import javafx.animation.AnimationTimer;
+import javafx.application.Platform;
 import javafx.beans.value.ChangeListener;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.image.Image;
-
 import java.util.List;
 import java.util.Objects;
 
@@ -23,15 +24,27 @@ import java.util.Objects;
 public class TileLayer extends MapLayer {
 
     private static final Image PLACEHOLDER = PlaceholderTileFactory.placeholder();
+    private static final double REDRAW_EPSILON = 0.001;
+    private static final long REDRAW_WINDOW_NANOS = 1_500_000_000L;
 
     private final TileManager tileManager;
     private final Canvas canvas = new Canvas();
     private final GraphicsContext graphics = canvas.getGraphicsContext2D();
     private final MapState mapState = new MapState();
+    private final AnimationTimer redrawTimer = new AnimationTimer() {
+        @Override
+        public void handle(long now) {
+            if (now >= redrawUntilNanos) {
+                stop();
+                return;
+            }
+            forceCanvasInvalidation();
+        }
+    };
 
     private List<TileCoordinate> currentVisibleTiles = List.of();
-    private boolean refreshPending;
-
+    private boolean redrawToggle;
+    private long redrawUntilNanos;
     // Listeners to sync MapState
     private final ChangeListener<Number> centerLatListener = (obs, old, val) -> requestRefresh();
     private final ChangeListener<Number> centerLonListener = (obs, old, val) -> requestRefresh();
@@ -82,9 +95,11 @@ public class TileLayer extends MapLayer {
 
         refreshTiles();
         drawTiles(width, height);
+        forceCanvasInvalidation();
     }
 
     private void requestRefresh() {
+        extendRedrawWindow();
         requestLayerLayout();
     }
 
@@ -94,8 +109,33 @@ public class TileLayer extends MapLayer {
         }
         List<TileCoordinate> visible = mapState.visibleTiles();
         currentVisibleTiles = visible;
-        // The consumer is called on FX thread when a tile loads
-        tileManager.refreshTiles(visible, (coordinate, image) -> requestLayerLayout());
+        tileManager.refreshTiles(visible, (coordinate, image) -> redrawLoadedTile(coordinate));
+    }
+
+    private void redrawLoadedTile(TileCoordinate coordinate) {
+        if (!currentVisibleTiles.contains(coordinate)) {
+            return;
+        }
+
+        double width = canvas.getWidth();
+        double height = canvas.getHeight();
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+
+        drawTiles(width, height);
+        extendRedrawWindow();
+    }
+
+    private void forceCanvasInvalidation() {
+        canvas.setTranslateX(redrawToggle ? REDRAW_EPSILON : 0.0);
+        redrawToggle = !redrawToggle;
+        Platform.requestNextPulse();
+    }
+
+    private void extendRedrawWindow() {
+        redrawUntilNanos = System.nanoTime() + REDRAW_WINDOW_NANOS;
+        redrawTimer.start();
     }
 
     private void drawTiles(double width, double height) {
