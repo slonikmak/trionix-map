@@ -35,6 +35,7 @@ import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.image.Image;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Region;
+import javafx.scene.shape.Rectangle;
 import javafx.util.Duration;
 
 /**
@@ -67,6 +68,7 @@ public final class MapView extends Region {
     private final GraphicsContext graphics = tileCanvas.getGraphicsContext2D();
     private final ObservableList<MapLayer> layers = FXCollections.observableArrayList();
     private final MapInteractionHandler interactionHandler;
+    private Rectangle viewportClip;
     private final AnimationTimer redrawTimer = new AnimationTimer() {
         @Override
         public void handle(long now) {
@@ -245,6 +247,10 @@ public final class MapView extends Region {
         tileCanvas.setMouseTransparent(true);
         layerPane.setManaged(false);
         layerPane.setPickOnBounds(false);
+        viewportClip = new Rectangle();
+        viewportClip.widthProperty().bind(widthProperty());
+        viewportClip.heightProperty().bind(heightProperty());
+        setClip(viewportClip);
         getChildren().addAll(tileCanvas, layerPane);
         getStyleClass().add("map-view");
     }
