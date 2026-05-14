@@ -68,3 +68,65 @@ The workflow does:
 
 - GitHub Packages may still require auth depending on package visibility and owner policy.
 - For public consumption without tokens, JitPack tag versions are the source of truth.
+
+## Release Notes Template
+
+Use this structure for every GitHub Release:
+
+```md
+## Summary
+- One-line description of this release.
+
+## Changes
+- Added: ...
+- Changed: ...
+- Fixed: ...
+
+## Breaking changes
+- None
+  or
+- <describe migration impact>
+
+## Upgrade
+- Maven coordinates:
+  - com.github.slonikmak.trionix-map:trionix-map-core:<TAG>
+  - com.github.slonikmak.trionix-map:trionix-map-layers:<TAG>
+```
+
+## Versioning Policy
+
+- `vX.Y.Z-beta.N`:
+  - pre-release builds for active iteration,
+  - API can change between beta versions.
+- `vX.Y.Z-rc.N`:
+  - release candidate for validation,
+  - no planned API changes except critical fixes.
+- `vX.Y.Z`:
+  - stable release,
+  - backward compatibility expected within the same major version.
+
+Rules:
+- Never reuse an existing tag name.
+- Always increment to a new tag for any fix (`...beta.6`, `...rc.2`, etc.).
+- If clients already consume a tag, prefer forward-fix with a newer tag instead of rewriting history.
+
+## Rollback and Retag
+
+If a release is bad:
+
+1. Do not force-push or mutate published tag history.
+2. Create a fixing commit on `main`.
+3. Create a new tag and push it (for example `v0.1.0-beta.7`).
+4. Let workflow publish and verify the new tag.
+5. Mark the bad release as deprecated:
+   - edit release notes and add `DO NOT USE`,
+   - link to the replacement tag.
+
+If a tag was pushed by mistake and must be removed before adoption:
+
+```bash
+git tag -d v0.1.0-beta.7
+git push origin :refs/tags/v0.1.0-beta.7
+```
+
+Then create and push the correct new tag.
