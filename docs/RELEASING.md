@@ -36,7 +36,7 @@ Commit the version bump changes.
 ```bash
 git add .
 git commit -m "Bump version to 0.1.0-beta.2"
-git push origin master
+git push origin main
 ```
 
 ### 3. Create GitHub Release
@@ -44,7 +44,7 @@ git push origin master
 1.  Go to the [GitHub Repository Releases page](https://github.com/slonikmak/trionix-map/releases).
 2.  Click **"Draft a new release"**.
 3.  **Choose a tag**: Create a new tag matching your version, e.g., `v0.1.0-beta.2`.
-4.  **Target**: Select `master`.
+4.  **Target**: Select `main`.
 5.  **Release title**: `v0.1.0-beta.2` (or a descriptive title).
 6.  **Description**: Add release notes, changelog, and highlights.
 7.  Click **"Publish release"**.
