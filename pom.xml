@@ -19,9 +19,15 @@
     </licenses>
 
     <scm>
-        <connection>scm:git:git://github.com/slonikmak/trionix-map.git</connection>
-        <developerConnection>scm:git:ssh://github.com:slonikmak/trionix-map.git</developerConnection>
-        <url>https://github.com/slonikmak/trionix-map/tree/main</url>
+        <!--
+          Source Control Management (SCM) information used by Maven and tools.
+          - connection: read-only URL used by build tools (https)
+          - developerConnection: SSH URL used by developers with push access
+          - url: repository web URL (browseable)
+        -->
+        <connection>scm:git:https://github.com/slonikmak/trionix-map.git</connection>
+        <developerConnection>scm:git:git@github.com:slonikmak/trionix-map.git</developerConnection>
+        <url>https://github.com/slonikmak/trionix-map</url>
     </scm>
 
     <developers>
