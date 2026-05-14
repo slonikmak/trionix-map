@@ -41,3 +41,26 @@ jobs:
             **/target/*.jar
             **/target/*-sources.jar
             **/target/*-javadoc.jar
+
+      - name: Warm and Verify JitPack Artifacts
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          BASE="https://jitpack.io/com/github/slonikmak/trionix-map"
+          echo "Trigger JitPack build for ${TAG}"
+          curl -fsSL "${BASE}/${TAG}/build.log" > /tmp/jitpack-build.log || true
+          echo "Waiting for JitPack module POMs..."
+          for i in {1..20}; do
+            CORE_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE}/trionix-map-core/${TAG}/trionix-map-core-${TAG}.pom" || true)
+            LAYERS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE}/trionix-map-layers/${TAG}/trionix-map-layers-${TAG}.pom" || true)
+            echo "Attempt ${i}: core=${CORE_CODE}, layers=${LAYERS_CODE}"
+            if [[ "${CORE_CODE}" == "200" && "${LAYERS_CODE}" == "200" ]]; then
+              echo "JitPack artifacts are available for ${TAG}"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "JitPack artifacts were not ready in time for ${TAG}"
+          exit 1
