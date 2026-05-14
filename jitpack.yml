@@ -1,0 +1,4 @@
+jdk:
+  - openjdk21
+install:
+  - ./mvnw -B -DskipTests clean install
