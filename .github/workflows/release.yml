@@ -38,5 +38,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            trionix-map-core/target/*.jar
-            trionix-map-layers/target/*.jar
+            **/target/*.jar
+            **/target/*-sources.jar
+            **/target/*-javadoc.jar
