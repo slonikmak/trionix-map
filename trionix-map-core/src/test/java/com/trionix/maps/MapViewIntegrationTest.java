@@ -5,10 +5,11 @@ import static org.assertj.core.api.Assertions.within;
 
 import com.trionix.maps.internal.MapState;
 import com.trionix.maps.internal.tiles.PlaceholderTileFactory;
-
 import com.trionix.maps.layer.MapLayer;
 import com.trionix.maps.testing.RecordingTileRetriever;
 import com.trionix.maps.testing.RecordingTileRetriever.LoadRequest;
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import javafx.application.Platform;
@@ -27,6 +28,9 @@ import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
+import okio.Buffer;
 import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.framework.junit5.Start;
 import org.testfx.util.WaitForAsyncUtils;
@@ -347,6 +351,63 @@ class MapViewIntegrationTest {
         WaitForAsyncUtils.waitForFxEvents();
     }
 
+    @Test
+    void switchingTileSourceClearsCacheAndRequestsTilesFromNewSource() throws Exception {
+        byte[] pngBytes = loadPlaceholderPngBytes();
+        try (MockWebServer webServer = new MockWebServer()) {
+            webServer.start();
+            for (int i = 0; i < 32; i++) {
+                @SuppressWarnings("resource")
+                Buffer body = new Buffer().write(pngBytes);
+                webServer.enqueue(new MockResponse().setResponseCode(200).setBody(body));
+            }
+
+            var retriever = new SimpleOsmTileRetriever(TileSource.of(
+                    webServer.url("/tiles-a/").toString(),
+                    "MapView-Integration-A",
+                    Duration.ofSeconds(1),
+                    Duration.ofSeconds(1)));
+            var cache = new InMemoryTileCache(64);
+
+            mount(() -> {
+                var view = new MapView(retriever, cache);
+                view.setCenterLat(0.0);
+                view.setCenterLon(0.0);
+                view.setZoom(2.0);
+                return view;
+            }, 256, 256);
+
+            var state = new MapState();
+            state.setCenterLat(0.0);
+            state.setCenterLon(0.0);
+            state.setZoom(2.0);
+            state.setViewportSize(256.0, 256.0);
+            var expectedTiles = state.visibleTiles();
+
+            for (int i = 0; i < expectedTiles.size(); i++) {
+                var request = webServer.takeRequest();
+                assertThat(request.getRequestUrl().encodedPath()).startsWith("/tiles-a/");
+            }
+            WaitForAsyncUtils.waitForFxEvents();
+
+            mapView.setTileSource(TileSource.of(
+                    webServer.url("/tiles-b/").toString(),
+                    "MapView-Integration-B",
+                    Duration.ofSeconds(1),
+                    Duration.ofSeconds(1)));
+            WaitForAsyncUtils.waitForFxEvents();
+
+            for (int i = 0; i < expectedTiles.size(); i++) {
+                var request = webServer.takeRequest();
+                assertThat(request.getRequestUrl().encodedPath()).startsWith("/tiles-b/");
+                assertThat(request.getHeader("User-Agent")).isEqualTo("MapView-Integration-B");
+            }
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(cache.get(expectedTiles.get(0).zoom(), expectedTiles.get(0).x(), expectedTiles.get(0).y()))
+                    .isNotNull();
+        }
+    }
+
     private void mount(java.util.function.Supplier<MapView> factory, double width, double height) {
         Platform.runLater(() -> {
             this.mapView = factory.get();
@@ -464,6 +525,16 @@ class MapViewIntegrationTest {
             }
         }
         return image;
+    }
+
+    private static byte[] loadPlaceholderPngBytes() throws IOException {
+        try (InputStream stream = MapViewIntegrationTest.class
+                .getResourceAsStream("/com/trionix/maps/placeholder-tile.png")) {
+            if (stream == null) {
+                throw new IOException("Missing placeholder tile resource");
+            }
+            return stream.readAllBytes();
+        }
     }
 
     private static final class TrackingLayer extends MapLayer {

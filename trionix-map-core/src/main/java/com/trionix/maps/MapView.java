@@ -21,10 +21,14 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.function.DoubleUnaryOperator;
 import javafx.application.Platform;
 import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.DoublePropertyBase;
+import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.ObjectPropertyBase;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
@@ -61,12 +65,15 @@ public final class MapView extends Region {
     private boolean enableDoubleClickZoom = true;
 
     private final MapState mapState = new MapState();
+    private final TileCache tileCache;
     private final TileManager tileManager;
+    private final SimpleOsmTileRetriever managedTileRetriever;
     private final Projection projection = WebMercatorProjection.INSTANCE;
     private final Canvas tileCanvas = new Canvas();
     private final Pane layerPane = new Pane();
     private final GraphicsContext graphics = tileCanvas.getGraphicsContext2D();
     private final ObservableList<MapLayer> layers = FXCollections.observableArrayList();
+    private final ObjectProperty<TileSource> tileSource;
     private final MapInteractionHandler interactionHandler;
     private Rectangle viewportClip;
     private final AnimationTimer redrawTimer = new AnimationTimer() {
@@ -86,6 +93,7 @@ public final class MapView extends Region {
     private boolean refreshPending;
     private boolean redrawToggle;
     private long redrawUntilNanos;
+    private boolean syncingTileSourceProperty;
 
     public MapView() {
         this(new SimpleOsmTileRetriever(), new InMemoryTileCache(DEFAULT_CACHE_CAPACITY));
@@ -94,7 +102,35 @@ public final class MapView extends Region {
     public MapView(TileRetriever retriever, TileCache cache) {
         Objects.requireNonNull(retriever, "retriever");
         Objects.requireNonNull(cache, "cache");
+        this.tileCache = cache;
         this.tileManager = new TileManager(cache, retriever);
+        this.managedTileRetriever = retriever instanceof SimpleOsmTileRetriever simpleRetriever
+                ? simpleRetriever
+                : null;
+        this.tileSource = new ObjectPropertyBase<>(managedTileRetriever != null ? managedTileRetriever.getTileSource() : null) {
+            @Override
+            protected void invalidated() {
+                if (syncingTileSourceProperty) {
+                    return;
+                }
+                TileSource newValue = get();
+                TileSource oldValue = managedTileRetriever != null ? managedTileRetriever.getTileSource() : null;
+                if (Objects.equals(oldValue, newValue)) {
+                    return;
+                }
+                runOnFxThreadAndWait(() -> applyTileSourceChangeFromProperty(oldValue, newValue));
+            }
+
+            @Override
+            public Object getBean() {
+                return MapView.this;
+            }
+
+            @Override
+            public String getName() {
+                return "tileSource";
+            }
+        };
         this.interactionHandler = new MapInteractionHandler(this);
 
         initializeProperties();
@@ -161,6 +197,19 @@ public final class MapView extends Region {
 
     public MapAnimationConfig getAnimationConfig() {
         return animationConfig;
+    }
+
+    public ObjectProperty<TileSource> tileSourceProperty() {
+        return tileSource;
+    }
+
+    public TileSource getTileSource() {
+        return tileSource.get();
+    }
+
+    public void setTileSource(TileSource source) {
+        Objects.requireNonNull(source, "source");
+        runOnFxThreadAndWait(() -> tileSource.set(source));
     }
 
     public void flyTo(double latitude, double longitude, double zoomLevel, Duration duration) {
@@ -266,6 +315,36 @@ public final class MapView extends Region {
         requestLayout();
     }
 
+    private void applyTileSourceChangeFromProperty(TileSource oldValue, TileSource source) {
+        ensureFxThread("tile source updates must run on the JavaFX Application Thread");
+        if (managedTileRetriever == null) {
+            syncingTileSourceProperty = true;
+            try {
+                tileSource.set(oldValue);
+            } finally {
+                syncingTileSourceProperty = false;
+            }
+            throw new IllegalStateException(
+                    "TileSource mutation is only supported for the built-in tile pipeline");
+        }
+        TileSource nonNullSource = Objects.requireNonNull(source, "tileSource");
+        if (Objects.equals(managedTileRetriever.getTileSource(), nonNullSource)) {
+            return;
+        }
+
+        managedTileRetriever.setTileSource(nonNullSource);
+        syncingTileSourceProperty = true;
+        try {
+            tileSource.set(nonNullSource);
+        } finally {
+            syncingTileSourceProperty = false;
+        }
+        tileManager.resetForTileSourceChange();
+        tileManager.clearCache();
+        redrawCurrentTiles();
+        refreshTiles();
+    }
+
     private void redrawLoadedTile(TileCoordinate coordinate) {
         if (!currentVisibleTiles.contains(coordinate)) {
             return;
@@ -330,6 +409,17 @@ public final class MapView extends Region {
     private void extendRedrawWindow() {
         redrawUntilNanos = System.nanoTime() + REDRAW_WINDOW_NANOS;
         redrawTimer.start();
+    }
+
+    private void redrawCurrentTiles() {
+        double width = tileCanvas.getWidth();
+        double height = tileCanvas.getHeight();
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+        drawTiles(width, height);
+        forceCanvasInvalidation();
+        extendRedrawWindow();
     }
 
     private void forceCanvasInvalidation() {
@@ -542,6 +632,32 @@ public final class MapView extends Region {
     private void ensureFxThread(String message) {
         if (!Platform.isFxApplicationThread()) {
             throw new IllegalStateException(message);
+        }
+    }
+
+    private void runOnFxThreadAndWait(Runnable action) {
+        if (Platform.isFxApplicationThread()) {
+            action.run();
+            return;
+        }
+
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        Platform.runLater(() -> {
+            try {
+                action.run();
+                future.complete(null);
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
+            }
+        });
+        try {
+            future.join();
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw e;
         }
     }
 

@@ -33,6 +33,7 @@ Use the mouse to drag (pan) and scroll (zoom) the map. Double-click to quickly z
 
 - `MapView` – JavaFX `Region` with observable `centerLat`, `centerLon`, and `zoom` properties along with a `flyTo` helper for animated navigation.
 - `MapLayer` – Abstract pane you subclass to render overlays (markers, paths, heatmaps). Layers live inside `MapView#getLayers()` and receive per-frame `layoutLayer` callbacks.
+- `TileSource` – Immutable built-in HTTP tile source configuration used by `MapView` for standard XYZ tile servers and runtime source switching.
 - `TileRetriever` – Interface for asynchronous tile fetchers. The default `SimpleOsmTileRetriever` streams tiles from OpenStreetMap via `HttpClient`.
 - `TileCache` – Interface for thread-safe tile caches. `InMemoryTileCache` ships with an LRU implementation sized for a configurable number of tiles. Additional implementations include:
   - `FileTileCache` – Disk-based cache with OSM-style directory structure (`{cacheDir}/{zoom}/{x}/{y}.png`) and LRU eviction.
@@ -132,6 +133,11 @@ MapView mapView = new MapView();
 mapView.setCenterLat(37.7749);
 mapView.setCenterLon(-122.4194);
 mapView.setZoom(12.0);
+mapView.setTileSource(TileSource.of(
+    "https://tile.openstreetmap.org/",
+    "MyDesktopApp/1.0",
+    java.time.Duration.ofSeconds(5),
+    java.time.Duration.ofSeconds(10)));
 mapView.getLayers().add(new MarkerLayer());
 
 // --- PointMarkerLayer usage example ---
@@ -162,6 +168,11 @@ TileCache cache = TileCacheBuilder.create()
     .build();
 
 MapView mapView = new MapView(new SimpleOsmTileRetriever(), cache);
+mapView.setTileSource(TileSource.of(
+    "https://tiles.example.com/base/",
+    "MyDesktopApp/1.0",
+    java.time.Duration.ofSeconds(5),
+    java.time.Duration.ofSeconds(10)));
 
 // Or construct directly for more control
 TileCache cache = new TieredTileCache(List.of(
@@ -171,6 +182,8 @@ TileCache cache = new TieredTileCache(List.of(
 ```
 
 `MapView` must be accessed from the JavaFX Application Thread. Property setters perform latitude/longitude normalization and clamp zoom to the supported range (defaults 1–19). The control automatically requests tiles, caches them, and re-renders when you change the viewport or layer stack.
+
+Use `setTileSource(...)` when you only need to switch between standard HTTP XYZ tile servers at runtime. Keep `TileRetriever` for advanced cases such as custom authentication, offline sources, or non-HTTP retrieval logic.
 
 ## Writing Layers
 

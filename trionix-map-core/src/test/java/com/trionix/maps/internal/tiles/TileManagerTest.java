@@ -132,6 +132,53 @@ class TileManagerTest {
         assertThat(cache.get(3, 4, 5)).isSameAs(image);
     }
 
+    @Test
+    void ignoresCompletionFromPreviousTileSourceVersion() throws InterruptedException {
+        WaitForAsyncUtils.waitForFxEvents();
+
+        InMemoryTileCache cache = new InMemoryTileCache(10);
+        RecordingRetriever retriever = new RecordingRetriever();
+        TileManager manager = new TileManager(cache, retriever);
+        TileCoordinate coordinate = new TileCoordinate(4, 2, 3);
+        CountDownLatch latch = new CountDownLatch(1);
+
+        manager.refreshTiles(List.of(coordinate), (tile, img) -> latch.countDown());
+        LoadRequest request = retriever.takeRequest(Duration.ofSeconds(1));
+
+        manager.resetForTileSourceChange();
+        request.future().complete(getSampleImage());
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(latch.getCount()).isEqualTo(1);
+        assertThat(cache.get(4, 2, 3)).isNull();
+    }
+
+    @Test
+    void staleCompletionDoesNotCancelPendingMarkerForReloadedTile() throws InterruptedException {
+        WaitForAsyncUtils.waitForFxEvents();
+
+        InMemoryTileCache cache = new InMemoryTileCache(10);
+        RecordingRetriever retriever = new RecordingRetriever();
+        TileManager manager = new TileManager(cache, retriever);
+        TileCoordinate coordinate = new TileCoordinate(5, 6, 7);
+
+        manager.refreshTiles(List.of(coordinate), (tile, img) -> { });
+        LoadRequest staleRequest = retriever.takeRequest(Duration.ofSeconds(1));
+
+        manager.resetForTileSourceChange();
+        manager.refreshTiles(List.of(coordinate), (tile, img) -> { });
+        LoadRequest freshRequest = retriever.takeRequest(Duration.ofSeconds(1));
+
+        staleRequest.future().complete(getSampleImage());
+        WaitForAsyncUtils.waitForFxEvents();
+
+        manager.refreshTiles(List.of(coordinate), (tile, img) -> { });
+        assertThat(retriever.requestCount()).isZero();
+
+        freshRequest.future().complete(getSampleImage());
+        WaitForAsyncUtils.waitForFxEvents();
+    }
+
     private static final class RecordingRetriever implements TileRetriever {
         private final BlockingQueue<LoadRequest> requests = new LinkedBlockingDeque<>();
 

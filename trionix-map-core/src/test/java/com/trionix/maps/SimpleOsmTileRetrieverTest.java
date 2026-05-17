@@ -81,4 +81,45 @@ class SimpleOsmTileRetrieverTest {
                 .hasCauseInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Unexpected HTTP status");
     }
+
+    @Test
+    void defaultTileSourceExposesOsmDefaults() {
+        TileSource source = TileSource.openStreetMap();
+
+        assertThat(source.baseUrl()).isEqualTo("https://tile.openstreetmap.org/");
+        assertThat(source.userAgent()).isEqualTo("TrionixMapView/0.1 (+https://trionix.example)");
+        assertThat(source.connectTimeout()).isEqualTo(Duration.ofSeconds(30));
+        assertThat(source.readTimeout()).isEqualTo(Duration.ofSeconds(30));
+    }
+
+    @Test
+    void usesUpdatedTileSourceForSubsequentRequests() throws Exception {
+        @SuppressWarnings("resource")
+        Buffer firstBuffer = new Buffer().write(pngBytes);
+        @SuppressWarnings("resource")
+        Buffer secondBuffer = new Buffer().write(pngBytes);
+        webServer.enqueue(new MockResponse().setResponseCode(200).setBody(firstBuffer));
+        webServer.enqueue(new MockResponse().setResponseCode(200).setBody(secondBuffer));
+
+        SimpleOsmTileRetriever retriever = new SimpleOsmTileRetriever(TileSource.of(
+                webServer.url("/tiles-a/").toString(),
+                "JUnit-Test-A",
+                Duration.ofSeconds(1),
+                Duration.ofSeconds(1)));
+
+        retriever.loadTile(1, 0, 0).get();
+        retriever.setTileSource(TileSource.of(
+                webServer.url("/tiles-b/").toString(),
+                "JUnit-Test-B",
+                Duration.ofSeconds(2),
+                Duration.ofSeconds(2)));
+        retriever.loadTile(1, 0, 1).get();
+
+        var firstRequest = webServer.takeRequest();
+        var secondRequest = webServer.takeRequest();
+        assertThat(firstRequest.getRequestUrl().encodedPath()).isEqualTo("/tiles-a/1/0/0.png");
+        assertThat(firstRequest.getHeader("User-Agent")).isEqualTo("JUnit-Test-A");
+        assertThat(secondRequest.getRequestUrl().encodedPath()).isEqualTo("/tiles-b/1/0/1.png");
+        assertThat(secondRequest.getHeader("User-Agent")).isEqualTo("JUnit-Test-B");
+    }
 }

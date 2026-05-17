@@ -1,9 +1,11 @@
 package com.trionix.maps;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.trionix.maps.internal.MapState;
 import com.trionix.maps.internal.projection.Projection;
+import java.time.Duration;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
@@ -27,6 +29,7 @@ class MapViewTest {
         assertThat(mapView.getCenterLat()).isEqualTo(0.0);
         assertThat(mapView.getCenterLon()).isEqualTo(0.0);
         assertThat(mapView.getZoom()).isEqualTo(1.0);
+        assertThat(mapView.getTileSource()).isEqualTo(TileSource.openStreetMap());
     }
 
     @Test
@@ -50,5 +53,47 @@ class MapViewTest {
 
         mapView.setZoom(25.0);
         assertThat(mapView.getZoom()).isEqualTo(MapState.DEFAULT_MAX_ZOOM);
+    }
+
+    @Test
+    void updatesTileSourceProperty() {
+        WaitForAsyncUtils.waitForFxEvents();
+        MapView mapView = new MapView();
+        TileSource source = TileSource.of(
+                "https://tiles.example.test/",
+                "MapView-Test",
+                Duration.ofSeconds(3),
+                Duration.ofSeconds(4));
+
+        mapView.setTileSource(source);
+
+        assertThat(mapView.getTileSource()).isEqualTo(source);
+        assertThat(mapView.tileSourceProperty().get()).isEqualTo(source);
+    }
+
+    @Test
+    void directTileSourcePropertyMutationUsesSameSwitchingPath() {
+        WaitForAsyncUtils.waitForFxEvents();
+        MapView mapView = new MapView();
+        TileSource source = TileSource.of(
+                "https://tiles.example.test/property/",
+                "MapView-Property-Test",
+                Duration.ofSeconds(6),
+                Duration.ofSeconds(7));
+
+        mapView.tileSourceProperty().set(source);
+
+        assertThat(mapView.getTileSource()).isEqualTo(source);
+    }
+
+    @Test
+    void rejectsTileSourceMutationForCustomRetrieverMode() {
+        WaitForAsyncUtils.waitForFxEvents();
+        TileRetriever retriever = (zoom, x, y) -> java.util.concurrent.CompletableFuture.completedFuture(null);
+        MapView mapView = new MapView(retriever, new InMemoryTileCache(8));
+
+        assertThatThrownBy(() -> mapView.setTileSource(TileSource.openStreetMap()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("built-in tile pipeline");
     }
 }

@@ -4,6 +4,7 @@ import com.trionix.maps.TileCache;
 import com.trionix.maps.TileRetriever;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,8 +20,9 @@ public final class TileManager {
 
     private final TileCache cache;
     private final TileRetriever retriever;
-    private final Set<TileCoordinate> pendingRequests = ConcurrentHashMap.newKeySet();
+    private final Map<TileCoordinate, Integer> pendingRequests = new ConcurrentHashMap<>();
     private final AtomicInteger generationCounter = new AtomicInteger();
+    private final AtomicInteger tileSourceVersion = new AtomicInteger();
     private volatile int currentGeneration;
 
     public TileManager(TileCache cache, TileRetriever retriever) {
@@ -66,9 +68,15 @@ public final class TileManager {
         cache.clear();
     }
 
+    public void resetForTileSourceChange() {
+        pendingRequests.clear();
+        currentGeneration = generationCounter.incrementAndGet();
+        tileSourceVersion.incrementAndGet();
+    }
+
     private void scheduleLoad(TileCoordinate coordinate, int generation, TileConsumer consumer) {
-        // Check if already loading this tile
-        if (!pendingRequests.add(coordinate)) {
+        int sourceVersion = tileSourceVersion.get();
+        if (pendingRequests.putIfAbsent(coordinate, sourceVersion) != null) {
             return; // Skip duplicate request
         }
 
@@ -76,9 +84,13 @@ public final class TileManager {
         retriever.loadTile(coordinate.zoom(), coordinate.x(), coordinate.y())
                 .whenComplete((image, error) -> {
                     // Always remove from pending requests
-                    pendingRequests.remove(coordinate);
+                    pendingRequests.remove(coordinate, sourceVersion);
 
                     if (error != null) {
+                        return;
+                    }
+
+                    if (sourceVersion != tileSourceVersion.get()) {
                         return;
                     }
 

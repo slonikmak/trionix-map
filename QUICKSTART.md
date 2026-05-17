@@ -68,6 +68,13 @@ map.setCenterLat(59.9343);    // Latitude
 map.setCenterLon(30.3351);     // Longitude
 map.setZoom(12.0);             // Zoom Level (1-19)
 
+// Switch the built-in tile source at runtime
+map.setTileSource(TileSource.of(
+    "https://tiles.example.com/base/",
+    "MyDesktopApp/1.0",
+    java.time.Duration.ofSeconds(5),
+    java.time.Duration.ofSeconds(10)));
+
 // Animated transition
 map.flyTo(55.7558, 37.6173, 10.0, Duration.seconds(2));
 ```
@@ -137,6 +144,13 @@ Built-in features:
 // Create a cache for 1000 tiles
 TileCache cache = new InMemoryTileCache(1000);
 MapView map = new MapView(new SimpleOsmTileRetriever(), cache);
+
+// Built-in XYZ source can still be switched later
+map.setTileSource(TileSource.of(
+    "https://tiles.example.com/base/",
+    "MyDesktopApp/1.0",
+    java.time.Duration.ofSeconds(5),
+    java.time.Duration.ofSeconds(10)));
 ```
 
 ## Where to Find More Information?
